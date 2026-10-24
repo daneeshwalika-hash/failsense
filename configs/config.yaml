@@ -1,0 +1,7 @@
+# Central configuration for FailSense. No hardcoded paths in the code.
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+  reports: reports
+
+seed: 42

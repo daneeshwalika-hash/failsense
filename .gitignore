@@ -1,0 +1,32 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Data: never in Git (downloaded by scripts/download_data.sh) ---
+data/*
+!data/raw/
+!data/processed/
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+
+# --- Private learning notes: never in the public repo ---
+_learning/
+
+# --- Secrets ---
+.env
+
+# --- ML artifacts (later) ---
+mlruns/
+mlartifacts/
+
+# --- Notebooks / editors / OS ---
+.ipynb_checkpoints/
+.vscode/
+*.Zone.Identifier
+.DS_Store

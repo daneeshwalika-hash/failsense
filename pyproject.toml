@@ -1,0 +1,35 @@
+[project]
+name = "failsense"
+version = "0.1.0"
+description = "End-to-end predictive maintenance system: failure prediction, RUL, anomaly detection and explainability."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+# FailSense is an application, not a published package, so there is no
+# [build-system] section. pytest finds the code through `pythonpath` below.
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: isort, B: bugbear, UP: pyupgrade,
+# N: naming, SIM: simplify, T20: forbid print (we use logging)
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*" = ["T20"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+]
