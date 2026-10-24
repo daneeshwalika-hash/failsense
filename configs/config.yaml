@@ -4,4 +4,7 @@ paths:
   processed_data: data/processed
   reports: reports
 
+datasets:
+  ai4i: data/raw/ai4i2020/ai4i2020.csv
+
 seed: 42
