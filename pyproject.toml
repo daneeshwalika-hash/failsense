@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "End-to-end predictive maintenance system: failure prediction, RUL, anomaly detection and explainability."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.11.2",
+    "pandas>=3.1.0",
+    "pyyaml>=6.0.3",
+]
 
 # FailSense is an application, not a published package, so there is no
 # [build-system] section. pytest finds the code through `pythonpath` below.
@@ -29,6 +33,7 @@ select = ["E", "F", "I", "B", "UP", "N", "SIM", "T20"]
 
 [dependency-groups]
 dev = [
+    "jupyter>=1.1.1",
     "pre-commit>=4.7.0",
     "pytest>=9.1.1",
     "ruff>=0.17.2",
