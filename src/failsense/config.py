@@ -8,6 +8,7 @@ path is hardcoded and the code works from any working directory
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -16,26 +17,45 @@ import yaml
 logger = logging.getLogger(__name__)
 
 ROOT_MARKER = "pyproject.toml"
+ROOT_ENV_VAR = "FAILSENSE_ROOT"
 DEFAULT_CONFIG = Path("configs") / "config.yaml"
 
 
 def find_repo_root(start: Path | None = None) -> Path:
-    """Walk up from ``start`` until the folder containing ``pyproject.toml`` is found.
+    """Find the repository root (the folder that contains ``pyproject.toml``).
+
+    Search order:
+
+    1. ``start``, if given: walk up from there.
+    2. The environment variable ``FAILSENSE_ROOT``, if set (e.g. in Docker).
+    3. The current working directory and its parents.
+    4. The location of this module (works from any folder after ``uv sync``,
+       because the package is installed in editable mode from ``src/``).
 
     Args:
-        start: Folder to start from. Defaults to the current working directory.
+        start: Folder to start from.
 
     Returns:
         The repository root folder.
 
     Raises:
-        FileNotFoundError: If no parent folder contains ``pyproject.toml``.
+        FileNotFoundError: If no candidate folder contains ``pyproject.toml``.
     """
-    start = (start or Path.cwd()).resolve()
-    for folder in (start, *start.parents):
-        if (folder / ROOT_MARKER).is_file():
-            return folder
-    raise FileNotFoundError(f"{ROOT_MARKER} not found above {start} - are you inside the repo?")
+    if start is not None:
+        candidates = [start]
+    else:
+        env_root = os.environ.get(ROOT_ENV_VAR)
+        candidates = [Path(env_root)] if env_root else []
+        candidates += [Path.cwd(), Path(__file__).parent]
+
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        for folder in (resolved, *resolved.parents):
+            if (folder / ROOT_MARKER).is_file():
+                return folder
+
+    searched = ", ".join(str(c) for c in candidates)
+    raise FileNotFoundError(f"{ROOT_MARKER} not found above: {searched}")
 
 
 def load_config(config_path: Path | None = None) -> dict[str, Any]:

@@ -20,6 +20,24 @@ def test_find_repo_root_raises_outside_repo(tmp_path: Path) -> None:
         find_repo_root(tmp_path)
 
 
+def test_find_repo_root_uses_env_variable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+    monkeypatch.setenv("FAILSENSE_ROOT", str(tmp_path))
+
+    assert find_repo_root() == tmp_path.resolve()
+
+
+def test_find_repo_root_falls_back_to_package_location(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("FAILSENSE_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)  # a folder outside any repo, like /tmp
+
+    root = find_repo_root()
+
+    assert (root / "configs" / "config.yaml").is_file()
+
+
 def test_find_repo_root_finds_this_repo() -> None:
     root = find_repo_root(Path(__file__).parent)
 
