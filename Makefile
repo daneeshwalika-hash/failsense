@@ -4,7 +4,7 @@ setup:  ## Install the environment and git hooks
 	uv sync
 	uv run pre-commit install
 
-data:   ## Download AI4I 2020, SECOM and NASA C-MAPSS into data/raw/
+data:   ## Download NASA C-MAPSS and prepare SCANIA Component X in data/raw/
 	bash scripts/download_data.sh
 
 test:   ## Run the test suite

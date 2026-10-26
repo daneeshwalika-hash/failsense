@@ -1,16 +1,35 @@
 #!/usr/bin/env bash
-# Download the three FailSense datasets into data/raw/.
+# Prepare the FailSense datasets in data/raw/.
 # Usage: scripts/download_data.sh [--force]
+#
+#   cmapss : downloaded automatically (NASA C-MAPSS, ~44 MB)
+#   scania : manual download (SCANIA Component X, ~1.5 GB), then this script
+#            extracts, flattens and verifies the files
+#
 # Idempotent: a dataset is skipped if its marker file already exists.
+# Bosch CNC Machining (Should item) is added on 09.11.
 set -euo pipefail
 
 # Always work relative to the repo root, wherever the script is called from.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RAW_DIR="${REPO_ROOT}/data/raw"
 
-AI4I_URL="https://archive.ics.uci.edu/static/public/601/ai4i+2020+predictive+maintenance+dataset.zip"
-SECOM_URL="https://archive.ics.uci.edu/static/public/179/secom.zip"
 CMAPSS_URL="https://phm-datasets.s3.amazonaws.com/NASA/6.+Turbofan+Engine+Degradation+Simulation+Data+Set.zip"
+
+SCANIA_PAGE="https://researchdata.se/en/catalogue/dataset/2024-34"
+SCANIA_FILES=(
+    train_operational_readouts.csv
+    train_specifications.csv
+    train_tte.csv
+    validation_operational_readouts.csv
+    validation_specifications.csv
+    validation_labels.csv
+    test_operational_readouts.csv
+    test_specifications.csv
+    test_labels.csv
+)
+# SHA-256 of the largest file as published on the SND catalogue page (version 3).
+SCANIA_TRAIN_SHA256="e01cb0bd87dfab4c9dbad215d51d81282fc0d413be96d6f819ea872fb7a3c715"
 
 FORCE=false
 [[ "${1:-}" == "--force" ]] && FORCE=true
@@ -21,12 +40,32 @@ require() {
     command -v "$1" >/dev/null 2>&1 || { log "ERROR: '$1' is not installed (sudo apt install $1)"; exit 1; }
 }
 
+# extract_and_flatten <target dir>
+# Unzip every archive in <target dir> (also archives inside archives), move all
+# files to the top level (no sub-folders, no spaces in paths) and make them read-only data.
+extract_and_flatten() {
+    local target="$1" archive
+
+    while [[ -n "$(find "$target" -name '*.zip' -print -quit)" ]]; do
+        archive="$(find "$target" -name '*.zip' -print -quit)"
+        unzip -q -o "$archive" -d "$(dirname "$archive")"
+        rm "$archive"
+    done
+
+    # -n = never overwrite an existing file.
+    find "$target" -mindepth 2 -type f -exec mv -n {} "$target"/ \;
+    find "$target" -mindepth 1 -type d -empty -delete
+
+    # Data files are read-only data, not programs: rw-r--r-- for all of them.
+    find "$target" -type f -exec chmod 644 {} +
+}
+
 # download_dataset <name> <url> <marker file that must exist afterwards>
 download_dataset() {
     local name="$1" url="$2" marker="$3"
     local target="${RAW_DIR}/${name}"
 
-    if [[ -n "$(find "$target" -name "$marker" -print -quit 2>/dev/null)" && "$FORCE" == false ]]; then
+    if [[ -f "${target}/${marker}" && "$FORCE" == false ]]; then
         log "${name}: already present, skipping (use --force to re-download)"
         return 0
     fi
@@ -38,28 +77,49 @@ download_dataset() {
         --output "${target}/${name}.zip" "$url"
 
     log "${name}: extracting ..."
-    unzip -q -o "${target}/${name}.zip" -d "$target"
-    rm "${target}/${name}.zip"
+    extract_and_flatten "$target"
 
-    # Some archives contain another zip inside (e.g. NASA C-MAPSS). Extract those too.
-    while IFS= read -r -d '' inner; do
-        unzip -q -o "$inner" -d "$(dirname "$inner")"
-        rm "$inner"
-    done < <(find "$target" -name '*.zip' -print0)
-
-    # Flatten: move files out of sub-folders (e.g. "6. Turbofan Engine ... Data Set/")
-    # so paths are short and contain no spaces. -n = never overwrite an existing file.
-    find "$target" -mindepth 2 -type f -exec mv -n {} "$target"/ \;
-    find "$target" -mindepth 1 -type d -empty -delete
-
-    # Data files are read-only data, not programs: rw-r--r-- for all of them.
-    find "$target" -type f -exec chmod 644 {} +
-
-    if [[ -z "$(find "$target" -name "$marker" -print -quit)" ]]; then
+    if [[ ! -f "${target}/${marker}" ]]; then
         log "ERROR: ${name}: expected file '${marker}' not found after extraction"
         exit 1
     fi
-    log "${name}: OK -> $(find "$target" -name "$marker" -print -quit)"
+    log "${name}: OK -> ${target}/${marker}"
+}
+
+# prepare_scania: the SND portal has no stable direct download link, so the
+# archive is downloaded by hand once. This function extracts and verifies it.
+prepare_scania() {
+    local target="${RAW_DIR}/scania" file missing=()
+
+    mkdir -p "$target"
+
+    if [[ -n "$(find "$target" -name '*.zip' -print -quit)" ]]; then
+        log "scania: extracting archive(s) ..."
+        extract_and_flatten "$target"
+    fi
+
+    for file in "${SCANIA_FILES[@]}"; do
+        [[ -f "${target}/${file}" ]] || missing+=("$file")
+    done
+
+    if (( ${#missing[@]} > 0 )); then
+        log "scania: ${#missing[@]} of ${#SCANIA_FILES[@]} files missing: ${missing[*]}"
+        log "scania: manual download needed (~1.5 GB):"
+        log "  1. Open ${SCANIA_PAGE}"
+        log "  2. Download all files (zip) and copy the zip into ${target}/"
+        log "  3. Run 'make data' again"
+        exit 1
+    fi
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        log "scania: checking SHA-256 of train_operational_readouts.csv ..."
+        if [[ "$(sha256sum "${target}/train_operational_readouts.csv" | cut -d ' ' -f 1)" == "$SCANIA_TRAIN_SHA256" ]]; then
+            log "scania: checksum OK (version 3)"
+        else
+            log "WARNING: scania: checksum differs - probably another dataset version; note the version in the README"
+        fi
+    fi
+    log "scania: OK -> ${target} (${#SCANIA_FILES[@]} files)"
 }
 
 main() {
@@ -67,12 +127,11 @@ main() {
     require unzip
     mkdir -p "$RAW_DIR"
 
-    download_dataset "ai4i2020" "$AI4I_URL" "ai4i2020.csv"
-    download_dataset "secom" "$SECOM_URL" "secom.data"
     download_dataset "cmapss" "$CMAPSS_URL" "train_FD001.txt"
+    prepare_scania
 
     log "All datasets ready in ${RAW_DIR}"
-    du -sh "$RAW_DIR"/*
+    du -sh "$RAW_DIR"/*/
 }
 
 main "$@"
