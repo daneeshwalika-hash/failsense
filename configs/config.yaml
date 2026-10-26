@@ -5,6 +5,28 @@ paths:
   reports: reports
 
 datasets:
-  ai4i: data/raw/ai4i2020/ai4i2020.csv
+  # SCANIA Component X (real truck fleet data, main dataset).
+  # Source: https://doi.org/10.5878/jvb5-d390 - manual download, see scripts/download_data.sh
+  scania:
+    dir: data/raw/scania
+    train:
+      readouts: data/raw/scania/train_operational_readouts.csv
+      specifications: data/raw/scania/train_specifications.csv
+      tte: data/raw/scania/train_tte.csv
+    validation:
+      readouts: data/raw/scania/validation_operational_readouts.csv
+      specifications: data/raw/scania/validation_specifications.csv
+      labels: data/raw/scania/validation_labels.csv
+    test:
+      readouts: data/raw/scania/test_operational_readouts.csv
+      specifications: data/raw/scania/test_specifications.csv
+      labels: data/raw/scania/test_labels.csv
+
+  # NASA C-MAPSS FD001 (simulation, RUL regression).
+  cmapss:
+    dir: data/raw/cmapss
+    train: data/raw/cmapss/train_FD001.txt
+    test: data/raw/cmapss/test_FD001.txt
+    rul: data/raw/cmapss/RUL_FD001.txt
 
 seed: 42
