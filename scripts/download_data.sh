@@ -28,7 +28,8 @@ SCANIA_FILES=(
     test_specifications.csv
     test_labels.csv
 )
-# SHA-256 of the largest file as published on the SND catalogue page (version 3).
+# Fallback only: SHA-256 of the largest file as published on the SND catalogue page (version 3).
+# Normally all files are checked against the sha256.txt that ships with the archive.
 SCANIA_TRAIN_SHA256="e01cb0bd87dfab4c9dbad215d51d81282fc0d413be96d6f819ea872fb7a3c715"
 
 FORCE=false
@@ -86,6 +87,32 @@ download_dataset() {
     log "${name}: OK -> ${target}/${marker}"
 }
 
+# verify_scania_checksums <target dir>
+# The archive ships sha256.txt with the original paths inside the zip
+# (e.g. "2024-34-3/data/train_tte.csv"). The files were flattened, so sed keeps
+# only the file name before sha256sum checks every file.
+verify_scania_checksums() {
+    local target="$1"
+
+    if [[ -f "${target}/sha256.txt" ]]; then
+        log "scania: verifying SHA-256 of all files listed in sha256.txt ..."
+        if (cd "$target" && sed -E 's#^([0-9a-f]+) .*/#\1  #' sha256.txt | sha256sum --check --quiet -); then
+            log "scania: all checksums OK"
+        else
+            log "ERROR: scania: checksum mismatch - delete ${target} and download the zip again"
+            exit 1
+        fi
+    else
+        # Fallback when the files were downloaded one by one (no sha256.txt).
+        log "scania: no sha256.txt found, checking train_operational_readouts.csv only ..."
+        if [[ "$(sha256sum "${target}/train_operational_readouts.csv" | cut -d ' ' -f 1)" == "$SCANIA_TRAIN_SHA256" ]]; then
+            log "scania: checksum OK (version 3)"
+        else
+            log "WARNING: scania: checksum differs - probably another dataset version; note the version in the README"
+        fi
+    fi
+}
+
 # prepare_scania: the SND portal has no stable direct download link, so the
 # archive is downloaded by hand once. This function extracts and verifies it.
 prepare_scania() {
@@ -111,20 +138,14 @@ prepare_scania() {
         exit 1
     fi
 
-    if command -v sha256sum >/dev/null 2>&1; then
-        log "scania: checking SHA-256 of train_operational_readouts.csv ..."
-        if [[ "$(sha256sum "${target}/train_operational_readouts.csv" | cut -d ' ' -f 1)" == "$SCANIA_TRAIN_SHA256" ]]; then
-            log "scania: checksum OK (version 3)"
-        else
-            log "WARNING: scania: checksum differs - probably another dataset version; note the version in the README"
-        fi
-    fi
+    verify_scania_checksums "$target"
     log "scania: OK -> ${target} (${#SCANIA_FILES[@]} files)"
 }
 
 main() {
     require curl
     require unzip
+    require sha256sum
     mkdir -p "$RAW_DIR"
 
     download_dataset "cmapss" "$CMAPSS_URL" "train_FD001.txt"

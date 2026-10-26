@@ -7,14 +7,19 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "matplotlib>=3.11.2",
     "pandas>=3.1.0",
+    "pyarrow>=26.0.0",
     "pyyaml>=6.0.3",
 ]
 
-# FailSense is an application, not a published package, so there is no
-# [build-system] section. pytest finds the code through `pythonpath` below.
+# FailSense is an application, not a published package. The build backend is only
+# used by `uv sync` to install src/failsense into .venv as an editable package, so
+# notebooks, scripts, `make` targets, tests and Docker can `import failsense`.
+# See docs/adr/0002-install-package-with-uv-build.md.
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 

@@ -13,3 +13,6 @@ test:   ## Run the test suite
 lint:   ## Lint and format check
 	uv run ruff check .
 	uv run ruff format --check .
+
+parquet:  ## Convert SCANIA CSV files to Parquet in data/processed/scania/
+	uv run python -m failsense.data.convert
