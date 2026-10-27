@@ -1,7 +1,8 @@
 # Problem Framing — FailSense
 
-> Status: **v0.2 (26.10.2026)**. Rewritten after the dataset switch
-> ([ADR 0001](adr/0001-dataset-switch.md)): SCANIA Component X is the main dataset,
+> Status: **v0.3 (27.10.2026)**. Label borders, training-sample strategy and split checks
+> are now decided and implemented (see change log). v0.2 was rewritten after the dataset
+> switch ([ADR 0001](adr/0001-dataset-switch.md)): SCANIA Component X is the main dataset,
 > NASA C-MAPSS FD001 stays for RUL. Written **before** any model was trained, so that
 > metrics and success criteria cannot be chosen after seeing results.
 > Numbers marked *(paper)* come from the dataset publication and are verified in the EDA
@@ -59,7 +60,7 @@ why time and vehicle are the main leakage risks (§4).
 
 ## 3. Data facts that shape the design
 
-*(paper; to be verified in the EDA)*
+*(paper; row and truck counts verified exactly in the EDA on 26.10)*
 
 | Part | Content | Size |
 |---|---|---|
@@ -71,8 +72,8 @@ why time and vehicle are the main leakage risks (§4).
 - **Feature types:** 8 numerical counters (cumulative, e.g. `171_0`) and 6 histogram
   variables with 10–36 bins each (e.g. `167_0` … `167_9`). Variable names are anonymised
   and values are partly scaled → **no physical feature engineering** is possible.
-- **Missing values:** less than 1 % per feature *(paper)* → simple imputation inside the
-  Pipeline.
+- **Missing values:** at most 0.86 % per feature (EDA); histograms are missing as whole
+  blocks → simple imputation inside the Pipeline.
 - **Strong imbalance:** classes 1–4 are only about 2.7 % of the validation trucks.
   A model that always predicts class 0 has high accuracy and zero recall →
   **accuracy is not a valid metric**.
@@ -89,16 +90,47 @@ of the study is `d = L − t`.
 | Truck | Condition | Label |
 |---|---|---|
 | Repaired (`in_study_repair = 1`) | `d > 48` | class 0 |
-| Repaired | `d` in the windows 48–24, 24–12, 12–6, 6–0 | class 1, 2, 3, 4 |
-| Not repaired (`in_study_repair = 0`) | `d > 48` | class 0 (the repair is at least 48 steps away) |
-| Not repaired | `d ≤ 48` | **unknown → not used for training** |
+| Repaired | `24 < d ≤ 48` / `12 < d ≤ 24` / `6 < d ≤ 12` / `0 ≤ d ≤ 6` | class 1 / 2 / 3 / 4 |
+| Not repaired (`in_study_repair = 0`) | `d > 48` | class 0 (the repair is more than 48 steps away) |
+| Not repaired | `d ≤ 48` (including `d = 48`) | **unknown (`<NA>`) → not used for training** |
+| Any | `d < 0` (readout after the end of observation) | error — the pipeline stops |
 
-Q1 label = 1 if class ≥ 1, else 0. The exact window borders (inclusive / exclusive) are
-taken from the paper and tested with unit tests.
+Q1 label = 1 if class ≥ 1, else 0; unknown stays unknown.
 
-**Open design decision (27.10):** use all readouts of a truck as training rows (more data,
-but strongly correlated rows) or sample readouts per truck like the random cut-off in
-validation/test. Both are compared with the same cross-validation.
+**Window borders (decided 27.10).** The challenge description defines the windows
+(48–24, 24–12, 12–6, 6–0) but does **not** say whether a border belongs to the upper or the
+lower window. Because `time_step` is a decimal, values close to a border occur. FailSense
+uses **upper bound inclusive**: class *k* if `d ≤ bound[k−1]`, class 0 only if `d > 48`,
+which matches "more than 48 = class 0". The bounds `[48, 24, 12, 6]` are stored in
+`configs/config.yaml` (`labels.class_bounds`), and every border value (6, 12, 24, 48) has a
+unit test.
+
+**Implementation choices.** Labels are returned as a **separate table** keyed by
+`(vehicle_id, time_step)`, never as extra columns next to the features. Unknown is `<NA>`
+(nullable `Int8`), not 0 or −1, so it cannot be used as a class by accident. The constant
+`LABEL_COLUMNS` lists every column that carries target information; the leakage test uses it.
+In the EDA, about 18 % of the training readouts are unknown.
+
+### Training samples: random cut-offs (decided 27.10, `src/failsense/data/sampling.py`)
+
+Validation and test give one label per truck at the end of a randomly truncated history,
+while training trucks have their full history. Training on every readout would create a
+train/serving skew: long histories would dominate, rows of one truck are near-copies, and the
+age distribution and positive rate would differ from validation/test.
+
+FailSense therefore draws **k random readouts per truck** (only readouts with a known label,
+without replacement, seeded) and treats each one as "the moment the model is asked". Features
+for a cut-off are built only from readouts up to that cut-off (§4, rule 3).
+
+- `k` and the seed come from `configs/config.yaml` (`sampling`); `null` keeps all known
+  readouts. The current `k = 5` is a starting point, **not a result**.
+- On 28.10, `k = 1`, `k = 5` and "all" are compared with the same folds (§7); the result
+  decides.
+- Check on 28.10: compare the distribution of `time_step` at the sampled cut-offs with that of
+  the last readout in validation. If they differ strongly, sample by time instead of by
+  readout index.
+- Several cut-offs of one truck are safe because all of them stay in the same CV fold
+  (`groups = vehicle_id`).
 
 ## 4. Data leakage — the most important risk
 
@@ -115,8 +147,12 @@ In SCANIA the risk is not one obvious column (as with AI4I), but **the truck and
    counter) are computed only from readouts at time ≤ `t`.
 4. All preprocessing (imputation, scaling, encoding, resampling) runs **inside** an sklearn
    `Pipeline` and therefore inside each cross-validation fold.
-5. **Automated tests** (`tests/test_leakage.py`) fail if a label column or `vehicle_id` is in
-   the feature matrix, or if a truck appears in more than one split / fold.
+5. **Automated checks and tests.** `src/failsense/data/split.py` provides
+   `assert_no_group_overlap` (stops the pipeline if a truck is in two splits) and
+   `make_group_folds` (StratifiedGroupKFold by `vehicle_id`, with an overlap check per fold);
+   tests in `tests/data/test_split.py`. On 27.10 the real SCANIA splits were checked:
+   **0 shared trucks** (train 23,550 / validation 5,046 / test 5,045). The feature-matrix test
+   (no column from `LABEL_COLUMNS`, no `vehicle_id`) follows in `tests/test_leakage.py` (31.10).
 6. C-MAPSS: cycles of the same engine never appear in training and validation at the same
    time → `GroupKFold` by engine id.
 
@@ -131,12 +167,23 @@ road) is far more expensive than an unnecessary workshop check.
 
 Instead of an assumed ratio, FailSense uses the **5 × 5 cost matrix published with the
 SCANIA challenge** (IDA 2024). Rows = true class, columns = predicted class.
-Examples *(paper)*: true 0 → predicted 1 (unnecessary early check) costs **7**;
-true 4 → predicted 0 (imminent failure missed) costs **500**.
+Source: the challenge description `2024_IDA_challenge_v2.pdf` (CC BY 4.0), shipped with the
+dataset.
+
+| true \\ pred | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| **0** | 0 | 7 | 8 | 9 | 10 |
+| **1** | 200 | 0 | 7 | 8 | 9 |
+| **2** | 300 | 200 | 0 | 7 | 8 |
+| **3** | 400 | 300 | 200 | 0 | 7 |
+| **4** | 500 | 400 | 300 | 200 | 0 |
+
+Example: true 0 → predicted 1 (unnecessary early check) costs **7**; true 4 → predicted 0
+(imminent failure missed) costs **500**.
 
 `Total cost = Σ cost[true, predicted] × number of trucks`
 
-- The full matrix is copied from Table 1 of the paper into `configs/config.yaml`
+- The full matrix is copied into `configs/config.yaml` (06.11)
   (not hardcoded) and covered by a test that checks its shape and the zero diagonal.
 - **Q2** is evaluated directly with this total cost.
 - **Q1** (binary) uses costs derived from the same matrix; the derivation is documented
@@ -166,8 +213,9 @@ near-perfect scores often published for synthetic datasets.
 ## 7. Evaluation protocol
 
 - **SCANIA:** official split by truck (train / validation / test). No own random split.
-- Model selection: `StratifiedGroupKFold(5)` by `vehicle_id` on the training set,
-  `random_state = 42`.
+- Model selection: `StratifiedGroupKFold(5)` by `vehicle_id` on the sampled training rows,
+  built once by `make_group_folds`; `n_splits` and the seed come from `configs/config.yaml`
+  (`cv`), so every model uses exactly the same folds.
 - Threshold choice and calibration: on the validation set.
 - **The test set is used exactly once**, for the final reported result.
 - All models use the same folds and the same metrics; every run is logged in MLflow.
@@ -180,6 +228,10 @@ near-perfect scores often published for synthetic datasets.
   but not its physical meaning; the LLM report must not invent one.
 - **Censoring:** trucks without a repair give only partial information; their last 48 time
   steps are excluded from training.
+- **Possible selection effect (to check on 30.10):** in the EDA, censored trucks are observed
+  for at least 121 time units, repaired trucks from 73.4. Together with the excluded censored
+  readouts near the end, features such as truck age (`time_step`) might separate the groups
+  for reasons of study design rather than wear. Their effect is measured with and without them.
 - The cost matrix comes from a research challenge, not from a real service department.
 - One component type in one manufacturer's fleet; results do not transfer automatically to
   other components or vehicles.
@@ -194,6 +246,11 @@ near-perfect scores often published for synthetic datasets.
 
 ## Change log
 
+- **v0.3 (27.10.2026):** window borders decided (upper bound inclusive, `labels.py`); full
+  5 × 5 cost matrix from the challenge description; training samples by random cut-offs
+  per truck (`sampling.py`, `k` chosen by CV on 28.10); split overlap checks and group folds
+  (`split.py`), verified on the real splits; EDA numbers for missing values; possible
+  selection effect added to the limitations.
 - **v0.2 (26.10.2026):** dataset switch to SCANIA Component X (ADR 0001); new questions,
   task-type justification, label construction with censoring, vehicle/time leakage rules,
   SCANIA cost matrix instead of the assumed 10 : 1 ratio.
