@@ -32,3 +32,9 @@ datasets:
     rul: data/raw/cmapss/RUL_FD001.txt
 
 seed: 42
+
+labels:
+  # IDA 2024 proximity classes, upper bound inclusive:
+  # class k if d <= class_bounds[k-1]; class 0 if d > class_bounds[0].
+  # class_bounds[0] is also the horizon of the binary label (Q1).
+  class_bounds: [48, 24, 12, 6]
