@@ -45,3 +45,9 @@ sampling:
   # The value is chosen with cross validation on 28.10 (compare 1, 5, null).
   n_cutoffs_per_vehicle: 5
   seed: 42
+
+cv:
+  # StratifiedGroupKFold by vehicle_id inside the training split.
+  # Every model uses the same folds (same seed) for a fair comparison.
+  n_splits: 5
+  seed: 42
