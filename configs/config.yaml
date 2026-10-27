@@ -32,3 +32,22 @@ datasets:
     rul: data/raw/cmapss/RUL_FD001.txt
 
 seed: 42
+
+labels:
+  # IDA 2024 proximity classes, upper bound inclusive:
+  # class k if d <= class_bounds[k-1]; class 0 if d > class_bounds[0].
+  # class_bounds[0] is also the horizon of the binary label (Q1).
+  class_bounds: [48, 24, 12, 6]
+
+sampling:
+  # Random cut-offs per truck in the training split (imitates the truncated
+  # histories of validation/test). null = keep all known readouts.
+  # The value is chosen with cross validation on 28.10 (compare 1, 5, null).
+  n_cutoffs_per_vehicle: 5
+  seed: 42
+
+cv:
+  # StratifiedGroupKFold by vehicle_id inside the training split.
+  # Every model uses the same folds (same seed) for a fair comparison.
+  n_splits: 5
+  seed: 42
