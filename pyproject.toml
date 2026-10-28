@@ -6,8 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "matplotlib>=3.11.2",
+    "mlflow>=3",
     "pandas>=3.1.0",
-    "pyarrow>=26.0.0",
+    "pyarrow>=18",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
 ]
