@@ -51,3 +51,12 @@ cv:
   # Every model uses the same folds (same seed) for a fair comparison.
   n_splits: 5
   seed: 42
+
+mlflow:
+  # Local tracking: one SQLite file + one artifact folder in the repo root
+  # (both git-ignored). Paths are relative to the repo root; failsense.tracking
+  # turns them into absolute URIs, so every script writes to the same database
+  # no matter from which directory it is started.
+  db_path: mlflow.db
+  artifact_dir: mlartifacts
+  experiment: failsense-q1-binary
