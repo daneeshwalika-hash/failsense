@@ -42,7 +42,10 @@ labels:
 sampling:
   # Random cut-offs per truck in the training split (imitates the truncated
   # histories of validation/test). null = keep all known readouts.
-  # The value is chosen with cross validation on 28.10 (compare 1, 5, null).
+  # Decided 28.10 with failsense.models.compare_cutoffs (LogReg, fixed
+  # evaluation = 1 cut-off per truck, same folds): val PR-AUC k=1 0.1001,
+  # k=5 0.1051, all 0.1073. k=5 keeps almost all of the gain at 1/13 of the
+  # training time of k=all. Re-check with the best model on 05.11.
   n_cutoffs_per_vehicle: 5
   seed: 42
 
