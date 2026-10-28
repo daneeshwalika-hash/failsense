@@ -1,10 +1,13 @@
 # Problem Framing — FailSense
 
-> Status: **v0.3 (27.10.2026)**. Label borders, training-sample strategy and split checks
-> are now decided and implemented (see change log). v0.2 was rewritten after the dataset
-> switch ([ADR 0001](adr/0001-dataset-switch.md)): SCANIA Component X is the main dataset,
-> NASA C-MAPSS FD001 stays for RUL. Written **before** any model was trained, so that
-> metrics and success criteria cannot be chosen after seeing results.
+> Status: **v0.4 (28.10.2026)**. The number of training cut-offs per truck (`k = 5`) is
+> decided by cross validation, the baselines are measured and logged in MLflow, and a
+> learning curve shows that the linear baseline is limited by bias (see change log).
+> v0.2 was rewritten after the dataset switch ([ADR 0001](adr/0001-dataset-switch.md)):
+> SCANIA Component X is the main dataset, NASA C-MAPSS FD001 stays for RUL.
+> Questions, metrics and the cost model (§1–§6) were written **before** any model was
+> trained, so that success criteria cannot be chosen after seeing results; measured
+> results are added later and marked with their date.
 > Numbers marked *(paper)* come from the dataset publication and are verified in the EDA
 > (`notebooks/01_eda_scania.ipynb`).
 
@@ -123,12 +126,24 @@ without replacement, seeded) and treats each one as "the moment the model is ask
 for a cut-off are built only from readouts up to that cut-off (§4, rule 3).
 
 - `k` and the seed come from `configs/config.yaml` (`sampling`); `null` keeps all known
-  readouts. The current `k = 5` is a starting point, **not a result**.
-- On 28.10, `k = 1`, `k = 5` and "all" are compared with the same folds (§7); the result
-  decides.
-- Check on 28.10: compare the distribution of `time_step` at the sampled cut-offs with that of
-  the last readout in validation. If they differ strongly, sample by time instead of by
-  readout index.
+  readouts.
+- **Decision (28.10): `k = 5`.** Compared with `src/failsense/models/compare_cutoffs.py` on a
+  **fixed evaluation set** (one cut-off per truck, fixed folds by vehicle, §7), logistic
+  regression on the 106 raw features:
+
+  | k | training rows | validation PR-AUC (5 folds) | training time per fold |
+  |---|---|---|---|
+  | 1 | 23,549 | 0.1001 ± 0.0052 | 0.8 s |
+  | **5** | 117,031 | **0.1051 ± 0.0065** | 8.2 s |
+  | all | 919,315 | 0.1073 ± 0.0074 | 105 s |
+
+  Compared fold by fold (same folds), `k = 5` beats `k = 1` in 4 of 5 folds (+0.005 on
+  average); "all" adds only +0.002 over `k = 5`, less than the variation between folds, at
+  13 times the training time. Because every model in week 2 (and the hyperparameter search)
+  repeats this cost, `k = 5` is used. **Re-check with the best model on 05.11**, because a
+  stronger model may use more data better (`--ks 5 10 all`).
+- The check of the `time_step` distribution at the sampled cut-offs against the last readout
+  in validation is moved to 30.10, together with the selection-effect check (§8).
 - Several cut-offs of one truck are safe because all of them stay in the same CV fold
   (`groups = vehicle_id`).
 
@@ -187,7 +202,7 @@ Example: true 0 → predicted 1 (unnecessary early check) costs **7**; true 4 �
   (not hardcoded) and covered by a test that checks its shape and the zero diagonal.
 - **Q2** is evaluated directly with this total cost.
 - **Q1** (binary) uses costs derived from the same matrix; the derivation is documented
-  in v0.3 together with the threshold choice (06.11).
+  together with the threshold choice (06.11).
 - The decision threshold is chosen to minimise total cost on the **validation** set —
   not fixed at 0.5.
 - The matrix reflects the challenge, not necessarily the true costs of a specific fleet.
@@ -206,9 +221,28 @@ Example: true 0 → predicted 1 (unnecessary early check) costs **7**; true 4 �
 **Why PR-AUC and not ROC-AUC?** With only a few percent positives, ROC-AUC looks good even
 for weak models, because the many true negatives dominate. PR-AUC focuses on the positive class.
 
-**No target number yet.** Numeric targets are set **after** the baselines are measured
-(28.10), not invented now. Results on real data are expected to be clearly lower than the
-near-perfect scores often published for synthetic datasets.
+**Baselines (measured 28.10, fixed evaluation set, 5 folds by vehicle, `k = 5`).**
+
+| Model | Validation PR-AUC | Training PR-AUC | Gap |
+|---|---|---|---|
+| `DummyClassifier` (prior) | 0.028 (= share of positives) | 0.028 | 0 |
+| `LogisticRegression` (balanced, 106 raw features) | **0.105 ± 0.006** | 0.109 | +0.004 |
+
+In `baseline_cv` (validation on 5 cut-offs per truck) the same model reaches ROC-AUC 0.81
+but PR-AUC 0.10, which illustrates the point above.
+
+**Diagnosis: high bias (underfitting).** The learning curve
+(`reports/figures/learning_curve_q1_logreg.png`) shows a large gap with little data
+(training 0.285 vs. validation 0.065 at 1,872 rows) that closes almost completely at the full
+size (0.109 vs. 0.105 at 93,617 rows). Both curves meet at a **low** level, and the last
+doubling of the data adds only +0.003. More data will not fix this model; better features
+(30.10) and non-linear models (week 2) are the next levers.
+
+**Target rule.** Every new model must beat the logistic-regression baseline **on the same
+folds**, compared fold by fold, not only on the mean. A numeric business target (total cost
+on validation) is set on 06.11 after calibration and threshold choice, not before.
+Results on real data are expected to be clearly lower than the near-perfect scores often
+published for synthetic datasets.
 
 ## 7. Evaluation protocol
 
@@ -218,7 +252,19 @@ near-perfect scores often published for synthetic datasets.
   (`cv`), so every model uses exactly the same folds.
 - Threshold choice and calibration: on the validation set.
 - **The test set is used exactly once**, for the final reported result.
-- All models use the same folds and the same metrics; every run is logged in MLflow.
+- All models use the same folds and the same metrics; every run is logged in MLflow
+  (local SQLite tracking, `configs/config.yaml` → `mlflow`; UI with `scripts/mlflow_ui.sh`).
+  Per run: parameters, per-fold scores, mean and standard deviation, and the **train/validation
+  gap** (`return_train_score=True`) as the over-/underfitting signal. The validation part of a
+  fold is logged as `val_*`, never as `test_*`, to avoid confusion with the test split.
+- **Fixed evaluation set for data-preparation choices.** When an experiment changes the
+  *training sample* (number of cut-offs `k`, training size in a learning curve), the
+  validation rows must not change with it. These experiments validate on **one cut-off per
+  truck** (like the official validation/test splits) with folds assigned **once per vehicle**
+  (`compare_cutoffs.assign_vehicle_folds` / `build_fixed_eval_folds`). Only the training rows
+  change, so a difference in the score is caused by the choice being tested.
+- Models are compared **fold by fold** on the same folds (paired comparison); a difference
+  smaller than the variation between folds is not treated as an improvement.
 - **C-MAPSS:** `GroupKFold` by engine on the training engines; the official test engines with
   `RUL_FD001.txt` are used once at the end.
 
@@ -246,6 +292,11 @@ near-perfect scores often published for synthetic datasets.
 
 ## Change log
 
+- **v0.4 (28.10.2026):** `k = 5` cut-offs per truck decided by CV on a fixed evaluation set
+  (§3); baselines measured (Dummy 0.028, LogReg 0.105 PR-AUC) and diagnosed as high bias with a
+  learning curve (§6); evaluation protocol extended with MLflow tracking, train/validation gap,
+  fixed evaluation set and paired comparison (§7); `time_step` distribution check moved to
+  30.10; wrong reference "documented in v0.3" for the Q1 cost derivation corrected (§5).
 - **v0.3 (27.10.2026):** window borders decided (upper bound inclusive, `labels.py`); full
   5 × 5 cost matrix from the challenge description; training samples by random cut-offs
   per truck (`sampling.py`, `k` chosen by CV on 28.10); split overlap checks and group folds
