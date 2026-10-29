@@ -1,8 +1,10 @@
 # Problem Framing — FailSense
 
-> Status: **v0.4 (28.10.2026)**. The number of training cut-offs per truck (`k = 5`) is
-> decided by cross validation, the baselines are measured and logged in MLflow, and a
-> learning curve shows that the linear baseline is limited by bias (see change log).
+> Status: **v0.5 (29.10.2026)**. All SCANIA files are checked by a data contract, the
+> truck specifications are part of the Pipeline, and scaling and the specifications were
+> compared fold by fold: neither changes the linear baseline (see change log).
+> v0.4 (28.10): `k = 5` cut-offs per truck decided by cross validation, baselines measured
+> and logged in MLflow, learning curve shows that the linear baseline is limited by bias.
 > v0.2 was rewritten after the dataset switch ([ADR 0001](adr/0001-dataset-switch.md)):
 > SCANIA Component X is the main dataset, NASA C-MAPSS FD001 stays for RUL.
 > Questions, metrics and the cost model (§1–§6) were written **before** any model was
@@ -77,6 +79,10 @@ why time and vehicle are the main leakage risks (§4).
   and values are partly scaled → **no physical feature engineering** is possible.
 - **Missing values:** at most 0.86 % per feature (EDA); histograms are missing as whole
   blocks → simple imputation inside the Pipeline.
+- **Specifications:** one row per truck, joined to every cut-off by `vehicle_id`
+  (`src/failsense/features/build.py`, 29.10) and one-hot encoded inside the Pipeline.
+  Validation/test contain categories that never occur in training →
+  `OneHotEncoder(handle_unknown="ignore")` encodes them as all zeros.
 - **Strong imbalance:** classes 1–4 are only about 2.7 % of the validation trucks.
   A model that always predicts class 0 has high accuracy and zero recall →
   **accuracy is not a valid metric**.
@@ -147,6 +153,24 @@ for a cut-off are built only from readouts up to that cut-off (§4, rule 3).
 - Several cut-offs of one truck are safe because all of them stay in the same CV fold
   (`groups = vehicle_id`).
 
+### Data contract (29.10, `src/failsense/data/schema.py`)
+
+Every SCANIA file is checked with **pandera** before it is used
+(`uv run python -m failsense.data.schema`). The contract states what valid input looks like,
+so bad data stops the pipeline with a clear message instead of silently producing a worse model.
+
+| File | Checks |
+|---|---|
+| Readouts (all splits) | exactly `vehicle_id`, `time_step` and the 105 feature columns (`strict`: an extra column, e.g. a label column, is an error); `vehicle_id` int64, all other columns float64 (no silent type coercion); no negative values; missing values only in features; `time_step` strictly increasing per truck; not empty |
+| Specifications | one row per truck; `Spec_0` … `Spec_7` text matching `Cat<n>` — the category *list* is not fixed, because unseen categories in validation/test are valid data |
+| Time-to-event | one row per truck; `length_of_study_time_step` ≥ 0; `in_study_repair` ∈ {0, 1} |
+| Across files | every truck with readouts has a specification row; no truck in two splits |
+
+**Result on the real data (29.10):** all 7 files pass (1,122,452 / 196,227 / 198,140 readout
+rows, < 1 s from Parquet). Two facts are now guaranteed instead of assumed: readouts are
+**sorted by `time_step` within every truck** (needed for the "previous readout" features on
+30.10), and pandas 3 reads the specifications as the `str` dtype.
+
 ## 4. Data leakage — the most important risk
 
 In SCANIA the risk is not one obvious column (as with AI4I), but **the truck and the time**.
@@ -161,13 +185,18 @@ In SCANIA the risk is not one obvious column (as with AI4I), but **the truck and
 3. **No information from the future.** Features at time `t` (for example the change of a
    counter) are computed only from readouts at time ≤ `t`.
 4. All preprocessing (imputation, scaling, encoding, resampling) runs **inside** an sklearn
-   `Pipeline` and therefore inside each cross-validation fold.
+   `Pipeline` and therefore inside each cross-validation fold. Since 29.10 a
+   `ColumnTransformer` routes numeric columns (median imputer → scaler) and specifications
+   (`OneHotEncoder`) to their own steps (`src/failsense/models/pipeline.py`).
 5. **Automated checks and tests.** `src/failsense/data/split.py` provides
    `assert_no_group_overlap` (stops the pipeline if a truck is in two splits) and
    `make_group_folds` (StratifiedGroupKFold by `vehicle_id`, with an overlap check per fold);
    tests in `tests/data/test_split.py`. On 27.10 the real SCANIA splits were checked:
    **0 shared trucks** (train 23,550 / validation 5,046 / test 5,045). The feature-matrix test
    (no column from `LABEL_COLUMNS`, no `vehicle_id`) follows in `tests/test_leakage.py` (31.10).
+   Two further guards since 29.10: the data contract rejects any label column in the readouts
+   (`strict` columns), and the numeric column selector inside the Pipeline raises if
+   `vehicle_id` or a label column reaches `fit`.
 6. C-MAPSS: cycles of the same engine never appear in training and validation at the same
    time → `GroupKFold` by engine id.
 
@@ -238,6 +267,37 @@ size (0.109 vs. 0.105 at 93,617 rows). Both curves meet at a **low** level, and 
 doubling of the data adds only +0.003. More data will not fix this model; better features
 (30.10) and non-linear models (week 2) are the next levers.
 
+**Preprocessing comparison (measured 29.10, `baseline_cv`, `k = 5`, same 5 folds by vehicle,
+validation on the sampled cut-offs).** These experiments change the *model*, not the training
+sample, so every model sees exactly the same rows and folds (§7).
+
+| Model | Validation PR-AUC | Training PR-AUC | Gap |
+|---|---|---|---|
+| `DummyClassifier` (prior) | 0.0276 | 0.0276 | 0 |
+| LogReg, numeric only, StandardScaler (as on 27./28.10) | **0.1014 ± 0.0047** | 0.1094 | +0.008 |
+| LogReg + specifications, StandardScaler | 0.1013 ± 0.0069 | 0.1147 | +0.013 |
+| LogReg + specifications, MinMaxScaler | 0.1001 ± 0.0041 | 0.1101 | +0.010 |
+
+| Paired comparison (per fold) | Mean difference | Better in |
+|---|---|---|
+| + specifications vs. numeric only | −0.0000 ± 0.0047 | 3 / 5 folds |
+| MinMaxScaler vs. StandardScaler | −0.0012 ± 0.0042 | 3 / 5 folds |
+
+- The numeric-only model reproduces the 27./28.10 result exactly (0.1014, same fold scores):
+  the refactoring into a `ColumnTransformer` changed nothing.
+- **Specifications do not help the linear model.** The validation score is unchanged while the
+  training score rises, i.e. the model learns something that does not transfer to new trucks.
+  A linear model adds one effect per category; if the specifications matter, it is more likely
+  through interactions (e.g. with load or age), which tree models can learn.
+  **Decision:** keep them in the Pipeline and repeat the paired comparison with boosting on
+  04.11; if they do not help there either, remove them (simpler model and API).
+- **Scaler: no real difference** (−0.0012, far inside the fold noise of ±0.004).
+  **Decision:** keep `StandardScaler` as default: it does not compress all values when one
+  extreme value occurs, and tree models in week 2 need no scaling at all.
+  Note: MinMax wins 3 of 5 folds but has the lower mean — the number of wins alone is not
+  enough; mean and spread of the paired differences are reported together.
+- The diagnosis stays **high bias**: preprocessing does not fix a model that is too simple.
+
 **Target rule.** Every new model must beat the logistic-regression baseline **on the same
 folds**, compared fold by fold, not only on the mean. A numeric business target (total cost
 on validation) is set on 06.11 after calibration and threshold choice, not before.
@@ -263,8 +323,12 @@ published for synthetic datasets.
   truck** (like the official validation/test splits) with folds assigned **once per vehicle**
   (`compare_cutoffs.assign_vehicle_folds` / `build_fixed_eval_folds`). Only the training rows
   change, so a difference in the score is caused by the choice being tested.
-- Models are compared **fold by fold** on the same folds (paired comparison); a difference
-  smaller than the variation between folds is not treated as an improvement.
+- Models are compared **fold by fold** on the same folds (paired comparison,
+  `baseline_cv.paired_comparison`: mean and standard deviation of the per-fold differences and
+  the number of folds won); a difference smaller than the variation between folds is not
+  treated as an improvement.
+- **Input data is validated by the data contract** (§3) before training; a violation stops
+  the run.
 - **C-MAPSS:** `GroupKFold` by engine on the training engines; the official test engines with
   `RUL_FD001.txt` are used once at the end.
 
@@ -292,6 +356,12 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v0.5 (29.10.2026):** pandera data contract for all SCANIA files, verified on the real data
+  (§3); specifications joined by `vehicle_id` and one-hot encoded in a `ColumnTransformer`
+  (§3, §4); two additional leakage guards (§4); StandardScaler vs. MinMaxScaler and
+  with/without specifications compared fold by fold — no real difference, decisions and
+  re-check on 04.11 documented (§6); evaluation protocol: paired comparison function and data
+  validation (§7).
 - **v0.4 (28.10.2026):** `k = 5` cut-offs per truck decided by CV on a fixed evaluation set
   (§3); baselines measured (Dummy 0.028, LogReg 0.105 PR-AUC) and diagnosed as high bias with a
   learning curve (§6); evaluation protocol extended with MLflow tracking, train/validation gap,
