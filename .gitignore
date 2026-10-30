@@ -31,3 +31,4 @@ mlartifacts/
 *.Zone.Identifier
 .DS_Store
 mlflow.db
+CLAUDE.md
