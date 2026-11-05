@@ -51,6 +51,7 @@ def rows() -> pd.DataFrame:
 # --- feature selection: leakage guard ----------------------------------------
 
 
+@pytest.mark.leakage
 def test_select_excludes_labels_id_and_non_numeric(rows: pd.DataFrame) -> None:
     assert select_feature_columns(rows) == ["time_step", "171_0", "666_0"]
 
@@ -59,10 +60,12 @@ def test_select_respects_extra_exclude(rows: pd.DataFrame) -> None:
     assert select_feature_columns(rows, exclude=["time_step"]) == ["171_0", "666_0"]
 
 
+@pytest.mark.leakage
 def test_forbidden_features_contain_ids_and_labels() -> None:
     assert {"vehicle_id", "in_study_repair", "length_of_study_time_step"} <= FORBIDDEN_FEATURES
 
 
+@pytest.mark.leakage
 def test_assert_no_forbidden_features_raises() -> None:
     with pytest.raises(ValueError, match="leakage"):
         assert_no_forbidden_features(["171_0", "vehicle_id"])
@@ -81,6 +84,7 @@ def test_pipeline_handles_missing_values(rows: pd.DataFrame) -> None:
     assert np.all((proba >= 0) & (proba <= 1))
 
 
+@pytest.mark.leakage
 def test_imputer_learns_only_from_training_part(rows: pd.DataFrame) -> None:
     """The core reason for a Pipeline: statistics come from the fit data only."""
     features = select_feature_columns(rows)
@@ -180,6 +184,7 @@ def test_minmax_maps_training_data_to_unit_range(mixed: pd.DataFrame) -> None:
     assert out.max() == pytest.approx(1.0)
 
 
+@pytest.mark.leakage
 def test_scaler_learns_only_from_training_part(rows: pd.DataFrame) -> None:
     x = rows[select_feature_columns(rows)]
     pre = build_preprocessor(scaler="standard").fit(x.iloc[:60])
@@ -194,6 +199,7 @@ def test_unknown_scaler_raises() -> None:
 
 
 @pytest.mark.parametrize("leak", ["vehicle_id", "time_to_study_end"])
+@pytest.mark.leakage
 def test_forbidden_numeric_column_stops_fit(rows: pd.DataFrame, leak: str) -> None:
     x = rows[[*select_feature_columns(rows), leak]]
     y = rows["repair_within_horizon"].to_numpy(dtype=int)
@@ -212,6 +218,7 @@ def test_pipeline_with_specs_survives_parallel_cv(mixed: pd.DataFrame) -> None:
 
 
 # --- engineered columns (30.10) ---------------------------------------------------
+@pytest.mark.leakage
 def test_selector_picks_engineered_columns_and_rejects_forbidden(rows: pd.DataFrame) -> None:
     from failsense.features.build import add_counter_deltas, add_histogram_features
     from failsense.models.pipeline import numeric_feature_selector
@@ -284,6 +291,7 @@ class _SpySMOTE(SMOTE):
         return super().fit_resample(X, y, **params)
 
 
+@pytest.mark.leakage
 def test_smote_runs_only_on_the_training_part_of_each_fold(rows: pd.DataFrame) -> None:
     x, y = _xy(rows)
     folds = make_group_folds(rows, n_splits=3, seed=42)
@@ -309,6 +317,7 @@ def test_smote_balances_only_the_training_data(rows: pd.DataFrame) -> None:
 
 @pytest.mark.parametrize("strategy", ["none", "balanced", "smote"])
 @pytest.mark.parametrize("leak", ["vehicle_id", "repair_within_horizon"])
+@pytest.mark.leakage
 def test_forbidden_column_stops_fit_for_every_strategy(
     rows: pd.DataFrame, strategy: str, leak: str
 ) -> None:
@@ -403,6 +412,7 @@ def test_log1p_default_is_off_and_reproduces_the_old_model(rows: pd.DataFrame) -
 
 
 @pytest.mark.parametrize("leak", ["vehicle_id", "repair_within_horizon"])
+@pytest.mark.leakage
 def test_log1p_columns_cannot_be_forbidden_columns(leak: str) -> None:
     with pytest.raises(ValueError, match="leakage"):
         build_preprocessor(log1p_columns=[leak])

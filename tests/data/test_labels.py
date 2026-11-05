@@ -124,6 +124,7 @@ def test_build_labels_repaired_vehicle(readouts: pd.DataFrame, tte: pd.DataFrame
     pd.testing.assert_series_equal(repaired[BINARY_COL], _int8([0, 1, 1, 1, 1]), check_names=False)
 
 
+@pytest.mark.leakage
 def test_build_labels_censored_vehicle_near_end_is_unknown(
     readouts: pd.DataFrame, tte: pd.DataFrame
 ) -> None:
@@ -137,6 +138,7 @@ def test_build_labels_censored_vehicle_near_end_is_unknown(
     )
 
 
+@pytest.mark.leakage
 def test_build_labels_censored_exactly_at_horizon_is_unknown() -> None:
     tte = pd.DataFrame(
         {"vehicle_id": [7], "length_of_study_time_step": [148.0], "in_study_repair": [0]}
@@ -154,6 +156,7 @@ def test_build_labels_keeps_index_and_order(readouts: pd.DataFrame, tte: pd.Data
     assert labels[TIME_COL].tolist() == shuffled[TIME_COL].tolist()
 
 
+@pytest.mark.leakage
 def test_build_labels_output_has_no_feature_columns(
     readouts: pd.DataFrame, tte: pd.DataFrame
 ) -> None:

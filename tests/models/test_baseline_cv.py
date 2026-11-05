@@ -36,6 +36,7 @@ def tte() -> pd.DataFrame:
     )
 
 
+@pytest.mark.leakage
 def test_training_frame_keeps_only_known_labels(readouts, tte) -> None:
     frame = build_training_frame(readouts, tte, BOUNDS, n_per_vehicle=None, seed=0)
     # vehicle 2 at t=60 (d=40) and t=95 (d=5) are unknown -> dropped
@@ -43,6 +44,7 @@ def test_training_frame_keeps_only_known_labels(readouts, tte) -> None:
     assert frame[BINARY_COL].tolist() == [0, 1, 1, 0]
 
 
+@pytest.mark.leakage
 def test_training_frame_has_features_and_only_binary_label(readouts, tte) -> None:
     frame = build_training_frame(readouts, tte, BOUNDS, n_per_vehicle=1, seed=0)
     assert list(frame.columns) == ["vehicle_id", "time_step", "171_0", BINARY_COL]
@@ -69,6 +71,7 @@ def test_read_table_csv_and_parquet(tmp_path: Path, readouts) -> None:
     pd.testing.assert_frame_equal(read_table(parquet_path), readouts)
 
 
+@pytest.mark.leakage
 def test_training_frame_engineered_features_use_previous_readout(readouts, tte) -> None:
     frame = build_training_frame(
         readouts, tte, BOUNDS, n_per_vehicle=None, seed=0, counter_cols=["171_0"]
@@ -82,6 +85,7 @@ def test_training_frame_engineered_features_use_previous_readout(readouts, tte) 
     assert not {"in_study_repair", "length_of_study_time_step"} & set(frame.columns)
 
 
+@pytest.mark.leakage
 def test_training_frame_delta_does_not_depend_on_sampling(readouts, tte) -> None:
     full = build_training_frame(readouts, tte, BOUNDS, None, 0, counter_cols=["171_0"])
     sub = build_training_frame(readouts, tte, BOUNDS, 1, 0, counter_cols=["171_0"])

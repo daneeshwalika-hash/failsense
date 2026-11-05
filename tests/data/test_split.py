@@ -33,17 +33,20 @@ def train_rows() -> pd.DataFrame:
 # --- assert_no_group_overlap -------------------------------------------------
 
 
+@pytest.mark.leakage
 def test_no_overlap_passes() -> None:
     # Duplicates *inside* a split are fine: one truck has many readouts.
     assert_no_group_overlap({"train": [1, 1, 2, 3], "validation": [4, 5], "test": [6, 6]})
 
 
+@pytest.mark.leakage
 def test_overlap_raises_and_names_the_pair() -> None:
     with pytest.raises(ValueError, match="train/test: 1 shared") as info:
         assert_no_group_overlap({"train": [1, 2, 3], "validation": [4], "test": [3, 7]})
     assert "validation" not in str(info.value)  # only the overlapping pair is reported
 
 
+@pytest.mark.leakage
 def test_overlap_reports_every_pair() -> None:
     with pytest.raises(ValueError) as info:
         assert_no_group_overlap({"a": [1, 2], "b": [2, 3], "c": [3, 1]})
@@ -51,6 +54,7 @@ def test_overlap_reports_every_pair() -> None:
     assert "a/b" in message and "a/c" in message and "b/c" in message
 
 
+@pytest.mark.leakage
 def test_overlap_accepts_pandas_series() -> None:
     with pytest.raises(ValueError, match="group leakage"):
         assert_no_group_overlap({"train": pd.Series([1, 2]), "validation": pd.Series([2])})
@@ -61,6 +65,7 @@ def test_needs_at_least_two_splits() -> None:
         assert_no_group_overlap({"train": [1, 2]})
 
 
+@pytest.mark.leakage
 def test_empty_splits_do_not_overlap() -> None:
     assert_no_group_overlap({"train": [], "validation": []})
 
@@ -68,6 +73,7 @@ def test_empty_splits_do_not_overlap() -> None:
 # --- make_group_folds --------------------------------------------------------
 
 
+@pytest.mark.leakage
 def test_folds_never_share_a_vehicle(train_rows: pd.DataFrame) -> None:
     folds = make_group_folds(train_rows, n_splits=5, seed=42)
     vehicles = train_rows["vehicle_id"].to_numpy()
@@ -77,6 +83,7 @@ def test_folds_never_share_a_vehicle(train_rows: pd.DataFrame) -> None:
         assert set(vehicles[train_pos]).isdisjoint(vehicles[val_pos])
 
 
+@pytest.mark.leakage
 def test_every_row_is_validated_exactly_once(train_rows: pd.DataFrame) -> None:
     folds = make_group_folds(train_rows, n_splits=5, seed=42)
     all_val = np.concatenate([val_pos for _, val_pos in folds])

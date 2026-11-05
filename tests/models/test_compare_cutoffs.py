@@ -32,6 +32,7 @@ def train_vehicles(eval_frame: pd.DataFrame) -> pd.Series:
     return pd.Series(np.repeat(eval_frame[VEHICLE_COL].to_numpy(), 3), name=VEHICLE_COL)
 
 
+@pytest.mark.leakage
 def test_assign_vehicle_folds_one_fold_per_vehicle(eval_frame: pd.DataFrame) -> None:
     vehicle_fold = assign_vehicle_folds(eval_frame, N_SPLITS, seed=42)
 
@@ -51,6 +52,7 @@ def test_assign_vehicle_folds_rejects_duplicate_vehicles(eval_frame: pd.DataFram
         assign_vehicle_folds(duplicated, N_SPLITS, seed=42)
 
 
+@pytest.mark.leakage
 def test_fixed_eval_folds_split_train_and_eval_parts(
     eval_frame: pd.DataFrame, train_vehicles: pd.Series
 ) -> None:

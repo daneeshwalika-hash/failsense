@@ -78,6 +78,7 @@ def test_summary_all_nan_column() -> None:
     assert out.loc[0, "n"] == 0 and np.isnan(out.loc[0, "p50"])
 
 
+@pytest.mark.leakage
 def test_summary_missing_and_forbidden_columns_raise(df: pd.DataFrame) -> None:
     with pytest.raises(ValueError, match="missing"):
         summarize_features(df, ["nope"])

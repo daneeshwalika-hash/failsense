@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from functools import partial
 
 import numpy as np
@@ -58,7 +59,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, MinMaxScaler, OneHotEncoder, StandardScaler
 
 from failsense.data.labels import LABEL_COLUMNS, VEHICLE_COL
-from failsense.data.schema import SPEC_COLUMNS
+from failsense.data.schema import SPEC_COLUMNS, feature_columns
+from failsense.features.build import engineered_columns
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +127,42 @@ def select_categorical_columns(df: pd.DataFrame) -> list[str]:
     columns = [c for c in SPEC_COLUMNS if c in df.columns]
     assert_no_forbidden_features(columns)  # defensive: should always pass
     return columns
+
+
+@dataclass(frozen=True)
+class FeatureColumns:
+    """Which columns of a training frame go where (one definition for CV and training).
+
+    * ``raw``: numeric raw columns incl. ``time_step`` (kept until the boosting
+      re-check on 04.11); never labels or ``vehicle_id``.
+    * ``engineered``: counter deltas/rates and histogram features.
+    * ``log1p``: the raw counters and histogram counts (non-negative by the data
+      contract) that get ``log1p`` before the scaler.
+    * ``categorical``: the specification columns (one-hot encoded).
+    """
+
+    raw: list[str]
+    engineered: list[str]
+    log1p: list[str]
+    categorical: list[str]
+
+
+def split_feature_columns(frame: pd.DataFrame) -> FeatureColumns:
+    """Sort the columns of a training frame into the groups of ``FeatureColumns``.
+
+    ``baseline_cv`` (cross validation) and ``train`` (final fit) both call this,
+    so the model that is evaluated and the model that is saved always use the
+    same columns. Forbidden columns are dropped by ``select_feature_columns``.
+    """
+    engineered = engineered_columns(list(frame.columns))
+    raw = select_feature_columns(frame, exclude=engineered)
+    raw_names = set(feature_columns())
+    return FeatureColumns(
+        raw=raw,
+        engineered=engineered,
+        log1p=[c for c in raw if c in raw_names],
+        categorical=select_categorical_columns(frame),
+    )
 
 
 _select_numeric = make_column_selector(dtype_include="number")

@@ -1,0 +1,48 @@
+# Continuous integration: lint, format check and tests on a clean checkout.
+#
+# No raw data and no mlflow.db exist here (both are git-ignored), so every test
+# must run on fixtures only - CI is the proof that they do.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch/PR cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to a commit (the action's README recommends it); v10.3.3.
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # uv reads .python-version (3.12) and installs that interpreter.
+      # --locked: fail if uv.lock is out of date with pyproject.toml, instead of
+      # silently re-resolving; CI must test exactly the locked versions.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Tests
+        run: uv run pytest -q
