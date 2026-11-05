@@ -1,0 +1,5 @@
+eval_set,model,reference,mean_diff,std_diff,wins,n_folds
+calibrated,xgboost_tuned,xgboost_step6_engineered,0.00153,0.00396,3,5
+calibrated,lightgbm_tuned,xgboost_step6_engineered,0.00219,0.00997,2,5
+literal,xgboost_tuned,xgboost_step6_engineered,-0.00197,0.00832,2,5
+literal,lightgbm_tuned,xgboost_step6_engineered,-0.00830,0.00696,1,5

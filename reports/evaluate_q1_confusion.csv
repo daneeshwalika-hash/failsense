@@ -1,0 +1,7 @@
+eval_set,model,alert_fraction,status,tp,fp,fn,tn
+calibrated,xgboost_tuned,0.05,provisional - threshold by cost on 06.11,95,1085,540,21829
+calibrated,lightgbm_tuned,0.05,provisional - threshold by cost on 06.11,92,1088,543,21826
+calibrated,xgboost_step6_engineered,0.05,provisional - threshold by cost on 06.11,94,1086,541,21828
+literal,xgboost_tuned,0.05,provisional - threshold by cost on 06.11,141,1039,473,21896
+literal,lightgbm_tuned,0.05,provisional - threshold by cost on 06.11,127,1053,487,21882
+literal,xgboost_step6_engineered,0.05,provisional - threshold by cost on 06.11,139,1041,475,21894

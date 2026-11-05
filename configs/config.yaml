@@ -70,6 +70,22 @@ rul:
   cap: 125
   mlflow_experiment: failsense-rul
 
+tuning:
+  # Hyperparameter search (step 7b, 05.11): Optuna TPE, seeded, MedianPruner per fold.
+  # The objective is the mean PR-AUC over the 5 folds on the calibrated validation-like
+  # evaluation set. Early stopping runs inside every fold on a truck-grouped inner split of
+  # the TRAINING trucks, never on the evaluation rows.
+  n_trials: 40              # per model (XGBoost and LightGBM are tuned separately)
+  timeout_minutes: 12       # hard cap per model (the number of finished trials is logged)
+  early_stopping_rounds: 50
+  max_rounds: 2000          # upper limit of boosting rounds (early stopping picks the number)
+  inner_val_fraction: 0.15  # share of the training trucks used for early stopping
+  seed: 42
+  top_fraction: 0.05        # alert the 5 % riskiest trucks (provisional metrics, no cost yet)
+  storage: optuna_q1.db     # SQLite file (git-ignored); a re-run resumes the study
+  registered_model: failsense-q1
+  alias: candidate
+
 mlflow:
   # Local tracking: one SQLite file + one artifact folder in the repo root
   # (both git-ignored). Paths are relative to the repo root; failsense.tracking

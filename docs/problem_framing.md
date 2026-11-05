@@ -1,6 +1,13 @@
 # Problem Framing — FailSense
 
-> Status: **v1.1 (05.11.2026, evaluation protocol fixed before tuning)**. The old CV scores were
+> Status: **v1.2 (05.11.2026, hyperparameter search and the candidate model)**. Optuna on
+> XGBoost and LightGBM found nothing clearly better than the untuned engineered XGBoost
+> (+0.0015 ± 0.0040, 3/5 folds, calibrated set); that model is registered as `failsense-q1`
+> (alias `candidate`). Calibrated set: PR-AUC 0.057, ROC-AUC 0.66, Brier 0.028 (worse than
+> predicting the base rate: the probabilities are too high); alerting the riskiest 5 % of trucks
+> finds 15 % of the failures with 8 % precision (about 3 × the base rate). Calibration and the
+> cost threshold come on 06.11 (§6).
+> v1.1 (05.11.2026, evaluation protocol fixed before tuning). The old CV scores were
 > too optimistic: with a validation-like evaluation set XGBoost drops from 0.1335 to 0.053
 > (calibrated) or 0.090 (literal procedure), the logistic regression from 0.110 to 0.044 /
 > 0.078; the family ranking is unchanged. The validation `time_step` shift is a property of the
@@ -767,6 +774,106 @@ on 06.11. (3) Keep `time_step`. (4) Carry the engineered features into the hyper
 search as an option (default on). (5) The official validation split on 06.11 is used for
 threshold and calibration and is the real check of this protocol.
 
+**Hyperparameter search and the candidate model (05.11, `make tune`, `make evaluate`,
+`make register`; `failsense.models.{tune,evaluate,register}`).** Evaluation protocol = the
+validation-like `calibrated` set (main) with `literal` as second reference; training sample `k5`
+(step 7a).
+
+*Set-up.* Optuna 5.0.0, TPE sampler (seed 42), `MedianPruner` per fold (after every fold the running
+mean is reported; 5 start-up trials, no pruning after the first fold); XGBoost and LightGBM are
+tuned **separately**, no class weights. **Objective:** the mean PR-AUC over the 5 folds on the
+calibrated evaluation rows. **Early stopping inside every fold** (50 rounds, at most 2,000, metric
+average precision) on a truck-grouped inner split of the *training* trucks (`GroupShuffleSplit`
+by `vehicle_id`, 15 % of the trucks, fixed seed per fold); the evaluation rows never take part and a
+test checks that no truck is in two of the three parts. The number of rounds is therefore not
+searched; the final model uses the **median of the per-fold early-stopping rounds** as a fixed
+number. Trial 0 is the untuned step-6 setting with engineered features (an anchor). Budget: 40 trials
+per model **with a hard cap of 12 minutes per model**; a one-trial timing (24 s XGBoost, 14 s
+LightGBM) had projected 25.4 min.
+
+| Parameter | XGBoost | LightGBM |
+|---|---|---|
+| `learning_rate` | 0.01–0.2 (log) | 0.01–0.2 (log) |
+| tree size | `max_depth` 3–8 | `num_leaves` 8–128 (log) |
+| minimum leaf size | `min_child_weight` 1–200 (log) | `min_child_samples` 20–400 (log) |
+| `subsample`, `colsample_bytree` | 0.5–1.0, 0.4–1.0 | 0.5–1.0 (every round), 0.4–1.0 |
+| `reg_lambda`, `reg_alpha` | 0.01–50, 0.001–10 (log) | 0.01–50, 0.001–10 (log) |
+| engineered features | yes / no (categorical) | yes / no (categorical) |
+
+*Studies (reproducible with seed 42 and the target of 40 trials; the counts depend on the time cap).*
+
+| Model | Trials finished | Complete / pruned | Anchor (step 6) | Best trial | Best PR-AUC | Time |
+|---|---|---|---|---|---|---|
+| XGBoost | 24 of 40 (**time cap reached**) | 20 / 4 | 0.0550 | 17 | **0.0585** | 12.0 min |
+| LightGBM | 40 of 40 | 33 / 7 | 0.0544 | 28 | **0.0592** | 9.8 min |
+
+Best settings: XGBoost `learning_rate` 0.064, `max_depth` 4, `min_child_weight` 1.9, `subsample` 0.66,
+`colsample_bytree` 0.63, `reg_lambda` 8.5, `reg_alpha` 0.003, engineered features, median 163 rounds
+(per fold 124 / 260 / 344 / 100 / 163). LightGBM `learning_rate` 0.048, `num_leaves` 15,
+`min_child_samples` 70, `subsample` 0.99, `colsample_bytree` 0.76, `reg_lambda` 3.0, `reg_alpha`
+0.018, engineered features, median 79 rounds. Engineered features were chosen in 18 of 20 (XGBoost)
+and 31 of 33 (LightGBM) complete trials. Complete trials took 34 s (XGBoost) and 16 s (LightGBM) on
+average, pruned ones 12 s and 7 s. Trials table: `reports/hpo_q1_*_trials.csv`; best settings:
+`reports/hpo_q1_best_params.json`; one MLflow run per study (not per fold) with the counts.
+
+*Tuned vs. untuned (5 folds, same training sample and evaluation rows, `evaluate`).* The untuned
+reference is the step-6 XGBoost with the engineered features (300 fixed rounds). The tuned models are
+fitted per fold exactly as in the search (and reproduce the search scores to the last digit).
+
+| Eval set | Model | PR-AUC | ROC-AUC | Brier | Mean predicted prob. | Top 5 %: precision / recall / F1 |
+|---|---|---|---|---|---|---|
+| calibrated | XGBoost tuned | 0.0585 ± 0.0093 | 0.661 | 0.0283 | 0.0535 | 8.1 % / 15.1 % / 0.105 |
+| calibrated | LightGBM tuned | 0.0592 ± 0.0138 | 0.651 | 0.0277 | 0.0527 | 7.8 % / 14.6 % / 0.102 |
+| calibrated | **XGBoost untuned, engineered** | 0.0570 ± 0.0062 | 0.664 | 0.0284 | 0.0533 | 8.0 % / 14.9 % / 0.104 |
+| literal | XGBoost tuned | 0.0923 ± 0.0084 | 0.781 | 0.0251 | 0.0335 | 12.0 % / 23.0 % / 0.157 |
+| literal | LightGBM tuned | 0.0860 ± 0.0066 | 0.779 | 0.0250 | 0.0338 | 10.8 % / 20.7 % / 0.142 |
+| literal | **XGBoost untuned, engineered** | 0.0943 ± 0.0070 | 0.784 | 0.0251 | 0.0332 | 11.8 % / 22.7 % / 0.155 |
+
+| Paired vs. untuned (per fold) | Calibrated | Literal |
+|---|---|---|
+| XGBoost tuned | +0.0015 ± 0.0040 (3 / 5 folds) | −0.0020 ± 0.0083 (2 / 5) |
+| LightGBM tuned | +0.0022 ± 0.0100 (2 / 5) | −0.0083 ± 0.0070 (1 / 5) |
+
+Confusion matrix when the riskiest 5 % of the trucks of every fold are alerted (pooled over the 5
+folds, 23,549 trucks; **provisional, the threshold is chosen by cost on 06.11**), untuned model,
+calibrated set: 94 true positives, 1,086 false alarms, 541 missed failures, 21,828 true negatives
+(`reports/evaluate_q1_confusion.csv`). There is no total cost today: it needs the cost threshold.
+
+- **Search result: nothing clearly better.** The tuned scores (0.0585, 0.0592) are the *best of N
+  trials* selected on the same folds and evaluation rows they are scored on, so they are
+  **optimistic**; against the untuned model the differences (+0.0015, +0.0022) are far inside the fold
+  noise, and on the `literal` set both tuned models are slightly *worse*. The search found
+  shallow, more regularised trees (depth 4 / 15 leaves, `reg_lambda` 3–8), i.e. the same capacity as
+  the step-6 setting. **The real check is the official validation on 06.11.**
+- **Caveat that favours the untuned model:** early stopping needs held-out trucks, so the tuned
+  models are fitted on 85 % of the training trucks in the search and in this comparison, while the
+  untuned model uses all of them. The effect is small, but it is not zero.
+- **The probabilities are too high on the calibrated set.** The mean predicted probability is 0.053
+  against a positive rate of 0.027, and the Brier score (0.0283) is *worse* than the Brier score of
+  always predicting the base rate (0.0263): late rows have large cumulative counters and the model
+  extrapolates. On the literal set (0.0251 vs. 0.0254 for the constant) it is about equal. Ranking is
+  the model's strength (ROC-AUC 0.66 / 0.78), not the probabilities: **calibration is the first job on
+  06.11.**
+- **Alerting the riskiest 5 % finds 15 % of the failures (calibrated set) at a precision of 8 %**,
+  about 3 × the positive rate of 2.7 % (4.5 × on the literal set). With a failure rate this low and a
+  weak signal, every alert is mostly a false alarm; whether that is acceptable is a cost question.
+- **Winner rule (fixed before the run):** a tuned model is registered only if it is better than the
+  untuned engineered XGBoost on the calibrated set by more than one standard deviation of the fold
+  differences **and** in at least 4 of 5 folds. Neither is, so **the simpler untuned engineered XGBoost
+  is the candidate** (the reason is stored with the model).
+- **The candidate model.** `failsense-q1`, version 1, alias `candidate` (the FastAPI service loads
+  `models:/failsense-q1@candidate` on 07.11): one scikit-learn Pipeline (median imputer + one-hot
+  specifications, then XGBoost with 300 rounds, learning rate 0.05, depth 4, no class weights) fitted
+  on all 117,031 `k5` training rows, **no validation or test data**; 239 input columns (106 raw
+  numeric, 125 engineered, 8 specifications; list in `reports/registry_q1.json`). Saved with `skops`
+  (the XGBoost / LightGBM types are listed as trusted); the reloaded model predicts identically
+  (tested on 5,089 rows, and in a test with a temporary registry). **The service must compute the 125
+  engineered features from the truck's previous readouts** (§4, rule 3) before calling the model.
+- **Limitations.** XGBoost's study stopped at 24 of 40 trials (time cap); an unlimited search might find
+  a better trial, but the scores of the best trials are flat (top-5 trials within 0.002) and fold noise
+  is ±0.009. Early stopping used the average-precision on random inner-validation rows (not the
+  validation-like distribution). The `matched` and `ts70` samplings were not tuned (decision of 7a).
+
 **RUL baseline on NASA C-MAPSS FD001 (measured 05.11, `python -m failsense.rul.baseline`,
 `make rul-baseline`, MLflow experiment `failsense-rul`).** Training file only; the official
 test file and `RUL_FD001.txt` have not been read (used once at the end).
@@ -906,6 +1013,13 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v1.2 (05.11.2026, step 7b):** Optuna search (TPE, MedianPruner per fold, early stopping on a
+  truck-grouped inner split) for XGBoost (24 of 40 trials, 12-minute cap) and LightGBM (40 trials) on the
+  calibrated evaluation set: best 0.0585 / 0.0592, not clearly better than the untuned engineered XGBoost
+  (+0.0015 ± 0.0040, 3/5 folds; tuned models slightly worse on the literal set). Metrics added: ROC-AUC,
+  Brier (worse than the base rate on the calibrated set), mean predicted probability, top-5 % alert
+  precision / recall / F1 and a provisional confusion matrix. The untuned engineered XGBoost is
+  registered as `failsense-q1` (alias `candidate`) by the pre-set winner rule.
 - **v1.1 (05.11.2026, step 7a, evaluation protocol):** the old CV evaluation was too optimistic
   (XGBoost 0.1335 → 0.053 calibrated / 0.090 literal; logistic regression 0.110 → 0.044 / 0.078,
   ranking unchanged). A rank matching of the `time_step` marginal failed the positive-rate check
