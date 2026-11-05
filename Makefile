@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization rul-baseline analysis test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare rul-baseline analysis test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -24,6 +24,9 @@ cv:     ## 5-fold CV of all baseline models on the training split, paired compar
 
 regularization:  ## L2 / L1 / ElasticNet grid, non-zero coefs, top L1 features (slow: ~17 min, saga)
 	uv run python -m failsense.models.regularization_cv
+
+compare:  ## One table: logreg / kNN / GaussianNB / trees on the same folds (kNN is slow), MLflow
+	uv run python -m failsense.models.compare_models_cv
 
 rul-baseline:  ## C-MAPSS FD001 RUL: Dummy / Ridge / Lasso baselines, GroupKFold by engine, MLflow
 	uv run python -m failsense.rul.baseline

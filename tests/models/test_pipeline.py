@@ -567,3 +567,45 @@ def test_coefficient_table_needs_a_fitted_model() -> None:
 
     with pytest.raises(ValueError, match="fitted"):
         coefficient_table(build_logreg_pipeline(42))
+
+
+# --- scaler=None and build_model_pipeline (03.11) ------------------------------------
+def test_preprocessor_without_scaler_has_no_scale_step(skewed: pd.DataFrame) -> None:
+    pre = build_preprocessor(scaler=None, log1p_columns=["171_0"])
+    for name, transformer, *_ in pre.transformers:
+        assert "scale" not in [s for s, _ in transformer.steps], name
+    out = pre.fit_transform(skewed)
+    # nothing is scaled: the plain column keeps its imputed original values
+    plain = out[:, 0]
+    np.testing.assert_allclose(plain[~skewed["666_0"].isna().to_numpy()][:5],
+                               skewed["666_0"].dropna().to_numpy()[:5])  # fmt: skip
+
+
+def test_default_scaler_is_unchanged_and_unknown_still_raises() -> None:
+    pre = build_preprocessor(log1p_columns=["171_0"])
+    for _, transformer, *_ in pre.transformers:
+        assert "scale" in [s for s, _ in transformer.steps]
+    with pytest.raises(ValueError, match="unknown scaler"):
+        build_preprocessor(scaler="robust")
+
+
+def test_build_model_pipeline_has_the_standard_step_names(rows: pd.DataFrame) -> None:
+    from sklearn.naive_bayes import GaussianNB
+
+    from failsense.models.pipeline import build_model_pipeline
+
+    x, y = _xy(rows)
+    pipe = build_model_pipeline(GaussianNB(), scaler=None)
+    assert [n for n, _ in pipe.steps] == ["preprocess", "model"]
+    assert pipe.fit(x.fillna(0.0), y).predict_proba(x.fillna(0.0)).shape == (len(x), 2)
+
+
+def test_column_kind_with_and_without_scaling() -> None:
+    from failsense.models.pipeline import column_kind
+
+    assert column_kind("num__171_0") == "numeric, scaled"
+    assert column_kind("num__171_0", scaled=False) == "numeric"
+    assert column_kind("num_log1p__171_0") == "numeric, log1p + scaled"
+    assert column_kind("cat__Spec_0_Cat1") == "one-hot, NOT scaled"
+    assert column_kind("cat__Spec_0_Cat1", scaled=False) == "one-hot"
+    assert column_kind("other_column") == "other"

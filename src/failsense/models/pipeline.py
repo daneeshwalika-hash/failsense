@@ -45,6 +45,7 @@ import logging
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -201,7 +202,7 @@ def _log1p_nonnegative(values: np.ndarray) -> np.ndarray:
 
 def build_preprocessor(
     categorical_columns: Sequence[str] = (),
-    scaler: str = "standard",
+    scaler: str | None = "standard",
     log1p_columns: Sequence[str] = (),
 ) -> ColumnTransformer:
     """Route numeric and categorical columns to their own preprocessing.
@@ -209,7 +210,11 @@ def build_preprocessor(
     Args:
         categorical_columns: Text columns to one-hot encode (the specs).
             Empty = numeric features only (the setup of 27./28.10).
-        scaler: Key of ``SCALERS`` (``"standard"`` or ``"minmax"``).
+        scaler: Key of ``SCALERS`` (``"standard"`` or ``"minmax"``), or ``None`` for no
+            scaling at all. Trees only compare a value with a threshold, so any
+            monotone transformation leaves them unchanged; Gaussian naive Bayes
+            standardises every feature on its own. Distance-based models (kNN) and
+            penalised linear models need a scaler.
         log1p_columns: Non-negative numeric columns that get ``log1p`` between
             imputation and scaling (the cumulative counters and histogram
             counts are extremely right-skewed: a few old trucks have values
@@ -236,16 +241,15 @@ def build_preprocessor(
         ValueError: If ``scaler`` is not a key of ``SCALERS``, or
             ``log1p_columns`` contains a forbidden column.
     """
-    if scaler not in SCALERS:
+    if scaler is not None and scaler not in SCALERS:
         raise ValueError(f"unknown scaler {scaler!r}, choose one of {sorted(SCALERS)}")
     assert_no_forbidden_features(log1p_columns)
 
-    numeric = Pipeline(
-        steps=[
-            ("impute", SimpleImputer(strategy="median")),
-            ("scale", SCALERS[scaler]()),
-        ]
-    )
+    def scale_step() -> list[tuple[str, TransformerMixin]]:
+        """The scaler as a pipeline step (a fresh instance each time), or nothing."""
+        return [] if scaler is None else [("scale", SCALERS[scaler]())]
+
+    numeric = Pipeline(steps=[("impute", SimpleImputer(strategy="median")), *scale_step()])
     # The log columns get their own branch; the generic branch takes every
     # other numeric column, so no column is processed twice.
     transformers: list[tuple[str, object, object]] = [
@@ -256,7 +260,7 @@ def build_preprocessor(
             steps=[
                 ("impute", SimpleImputer(strategy="median")),
                 ("log1p", FunctionTransformer(_log1p_nonnegative, feature_names_out="one-to-one")),
-                ("scale", SCALERS[scaler]()),
+                *scale_step(),
             ]
         )
         transformers.append(("num_log1p", logged, list(log1p_columns)))
@@ -391,11 +395,23 @@ def build_logreg_pipeline(
 
 
 # Kind of a preprocessed column, from the name prefix the ColumnTransformer gives it.
+# (prefix, kind when the numeric columns are scaled, kind without scaling)
 _COLUMN_KINDS = (
-    ("num_log1p__", "numeric, log1p + scaled"),
-    ("num__", "numeric, scaled"),
-    ("cat__", "one-hot, NOT scaled"),
+    ("num_log1p__", "numeric, log1p + scaled", "numeric, log1p"),
+    ("num__", "numeric, scaled", "numeric"),
+    ("cat__", "one-hot, NOT scaled", "one-hot"),
 )
+
+
+def column_kind(name: str, scaled: bool = True) -> str:
+    """Kind of a preprocessed column from its ColumnTransformer prefix (or ``"other"``).
+
+    ``scaled=False`` is for models without a scaler (trees), where "scaled" would be wrong.
+    """
+    for prefix, kind_scaled, kind_plain in _COLUMN_KINDS:
+        if name.startswith(prefix):
+            return kind_scaled if scaled else kind_plain
+    return "other"
 
 
 def coefficient_table(pipeline: Pipeline) -> pd.DataFrame:
@@ -416,14 +432,33 @@ def coefficient_table(pipeline: Pipeline) -> pd.DataFrame:
         raise ValueError("pipeline needs a fitted logistic-regression step named 'model'")
     names = pipeline.named_steps["preprocess"].get_feature_names_out()
     coefs = model.coef_.ravel()
-    kinds = [next((k for p, k in _COLUMN_KINDS if n.startswith(p)), "other") for n in names]
-    return pd.DataFrame({"feature": names, "coef": coefs, "kind": kinds})
+    return pd.DataFrame({"feature": names, "coef": coefs, "kind": [column_kind(n) for n in names]})
 
 
 def count_nonzero_coefficients(pipeline: Pipeline) -> tuple[int, int]:
     """Return ``(non-zero coefficients, all coefficients)`` of a fitted pipeline."""
     coefs = coefficient_table(pipeline)["coef"].to_numpy()
     return int((coefs != 0).sum()), int(coefs.size)
+
+
+def build_model_pipeline(
+    estimator: Any,
+    categorical_columns: Sequence[str] = (),
+    scaler: str | None = "standard",
+    log1p_columns: Sequence[str] = (),
+) -> Pipeline:
+    """Preprocessor -> any classifier, as one estimator (steps ``preprocess``, ``model``).
+
+    Used to compare model families on identical inputs. Every learned step (imputer,
+    scaler, encoder) sits inside the Pipeline and is fitted per fold. ``scaler=None``
+    for models that do not need one (trees, naive Bayes).
+    """
+    return Pipeline(
+        steps=[
+            ("preprocess", build_preprocessor(categorical_columns, scaler, log1p_columns)),
+            ("model", estimator),
+        ]
+    )
 
 
 def build_dummy_classifier() -> DummyClassifier:

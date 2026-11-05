@@ -1,6 +1,10 @@
 # Problem Framing — FailSense
 
-> Status: **v0.8 (05.11.2026, RUL baseline added)**. C-MAPSS FD001 (Q3): a linear model
+> Status: **v0.9 (05.11.2026, plan day 03.11 caught up)**. kNN, Gaussian naive Bayes and
+> single decision trees are compared with the logistic-regression reference in one table on
+> the same folds: none beats it (best: kNN 0.106 vs. 0.110); single trees overfit and are
+> far behind (§6). Boosting is added to the same table next.
+> v0.8 (05.11.2026, RUL baseline added). C-MAPSS FD001 (Q3): a linear model
 > halves the RMSE of the mean predictor (21.6 vs. 41.7 cycles); Ridge and Lasso are
 > identical (§6, RUL baseline).
 > v0.7 (05.11.2026, plan day 02.11 caught up). Regularization (L2, L1,
@@ -471,6 +475,64 @@ are not fully optimised solutions; they were not re-run. All other models conver
   against about 5 minutes for `make cv`. `saga` is the slow part, another reason not to tune
   it further.
 
+**Model families on the same folds (measured 05.11, `python -m failsense.models.compare_models_cv`,
+`make compare`, `k = 5`, same 5 folds by vehicle, raw features + specifications).** One
+table for all families; boosting models are added to it next (`build_models`). Reference =
+logistic regression (specs, balanced, `log1p`, L2, C = 1). The reference reproduces
+0.1098 here (0.10985; 0.10988 earlier: a difference in the fifth decimal from the parallel
+LBFGS runs, not a change).
+
+| Model | Validation PR-AUC | Training | Gap | Mean predicted probability | Runtime (5 folds) | Paired vs. reference |
+|---|---|---|---|---|---|---|
+| **logistic regression (reference)** | **0.1098 ± 0.0055** | 0.1254 | +0.016 | 0.331 | 29 s | — |
+| kNN, k = 25, uniform | 0.0855 ± 0.0073 | n/a | n/a | 0.026 | 27 s | −0.0244 ± 0.0088 (0 / 5) |
+| kNN, k = 101, uniform | 0.0976 ± 0.0093 | n/a | n/a | 0.026 | 28 s | −0.0123 ± 0.0120 (2 / 5) |
+| kNN, k = 101, distance-weighted | 0.1057 ± 0.0113 | n/a | n/a | 0.026 | 28 s | −0.0041 ± 0.0131 (2 / 5) |
+| Gaussian naive Bayes | 0.0514 ± 0.0008 | 0.0525 | +0.001 | 0.569 | 3 s | −0.0585 ± 0.0053 (0 / 5) |
+| decision tree, depth 4 | 0.0721 ± 0.0038 | 0.0824 | +0.010 | 0.357 | 8 s | −0.0378 ± 0.0068 (0 / 5) |
+| decision tree, depth 8 | 0.0806 ± 0.0020 | 0.1277 | +0.047 | 0.299 | 11 s | −0.0293 ± 0.0065 (0 / 5) |
+| decision tree, depth unlimited | 0.0726 ± 0.0060 | 0.2573 | +0.185 | 0.207 | 14 s | −0.0372 ± 0.0041 (0 / 5) |
+
+Set-up (why): kNN with `log1p` + `StandardScaler` inside the Pipeline (distances need
+comparable scales) and k of 25 and 101 (a probability is a fraction with denominator k; small
+k gives almost only 0 and 1), no class weights; its training score is **not computed**, because every
+training point is its own nearest neighbour. Gaussian naive Bayes with `log1p`, no scaler (it
+standardises each feature on its own), default priors = class frequency (it is generative and
+has no class weights). Trees: `class_weight = "balanced"`, `min_samples_leaf = 100`, no
+scaler and no `log1p`, because a split only compares a value with a threshold and any
+monotone transformation gives the same tree.
+
+- **No family beats the logistic regression.** The nearest is kNN with k = 101 and distance
+  weights (−0.0041 ± 0.0131, 2 / 5 folds): within noise, with the largest fold-to-fold spread
+  of all models (±0.0113). **Decision:** the reference stays logistic regression; the
+  other families stay in the table as comparison points.
+- **kNN improves with smoother estimates:** k 25 → 101 gives +0.012 and distance weighting
+  another +0.008. Its predicted probabilities average 0.026 (true rate 0.0276): without
+  class weights it is calibrated on average, like the logistic regression with weight "none"
+  (§6, imbalance), while the reference (0.331) is shifted by `class_weight`.
+- **Gaussian naive Bayes is the weakest (0.051, about 1.9 × the Dummy)** and predicts a mean
+  probability of 0.569 against a true rate of 0.028: the independence and normality
+  assumptions fail on correlated histogram bins and 0/1 columns, so its probabilities are
+  extreme and useless for a threshold. Train ≈ validation: it is misspecified, not overfit.
+- **Single trees overfit and stay far behind:** the gap grows with depth (+0.010, +0.047,
+  +0.185) and the unlimited tree reaches 0.257 on training data and 0.073 on validation.
+  Depth 8 is best (0.0806 ± 0.0020), still −0.029 under the reference in every fold. A single
+  tree has high variance; **ensembles of trees (random forest, boosting) are the next step.**
+- **Order on this data:** logistic regression (0.110) > kNN (0.106) > tree (0.081) > naive
+  Bayes (0.051). A smooth linear boundary on `log1p` features beats local and rule-based single
+  models; the signal is weak and spread over many features, which no single model captures.
+- **Top impurity importances of the best tree (depth 8; averaged over the 5 fold models;
+  biased, SHAP on 06.11):** `459_9` (0.317), `666_0` (0.167), `459_10` (0.098, in only 2 / 5
+  folds), `time_step` (0.049), `459_15`, `837_0`, `397_3`, `397_12`, `459_16`, `397_15` (each
+  0.010–0.021). Impurity importance favours features with many distinct values and is
+  computed on the training data, so it is a pointer, not an explanation. Two observations:
+  histogram 459 dominates (as in the outlier analysis, §6), and `time_step` is used in all
+  5 folds, which feeds the selection-effect check on 04.11 (§8).
+- **Runtime:** the three kNN models take 27–28 s each for all 5 folds. The one-fold timing
+  predicted 5–7 s per model if the folds ran in parallel, or 24–35 s one after another; the
+  actual time matches the sequential figure, so brute-force kNN on 196 dimensions did not
+  profit from running the folds in parallel. The whole table takes about 2.6 minutes.
+
 **RUL baseline on NASA C-MAPSS FD001 (measured 05.11, `python -m failsense.rul.baseline`,
 `make rul-baseline`, MLflow experiment `failsense-rul`).** Training file only; the official
 test file and `RUL_FD001.txt` have not been read (used once at the end).
@@ -593,6 +655,12 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v0.9 (05.11.2026, tasks of plan day 03.11):** one comparison table (`make compare`) for
+  logistic regression, kNN (k 25/101, uniform/distance), Gaussian naive Bayes and decision
+  trees (depth 4/8/unlimited) on the same 5 folds: nothing beats the reference (best other:
+  kNN 0.1057 vs. 0.1098); naive Bayes is badly miscalibrated (mean probability 0.57), trees
+  overfit with depth; impurity top-10 and runtimes documented; boosting is added to the same
+  table next (§6).
 - **v0.8 (05.11.2026, tasks of plan day 02.11, RUL part):** C-MAPSS FD001 baseline (Q3):
   RUL labels with cap 125, `GroupKFold` by engine, Dummy / Ridge / Lasso, RMSE and MAE in
   MLflow experiment `failsense-rul`; linear model halves the Dummy's RMSE (21.6 vs. 41.7),
