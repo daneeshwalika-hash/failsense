@@ -45,6 +45,19 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 - Not done yet: cost-based threshold, calibration, and every other question (Q2–Q5). No target
   for the total cost is set before the baselines are calibrated.
 
+**Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
+`GroupKFold` by engine, RUL capped at 125 cycles, RMSE in cycles (lower is better); the
+test file is untouched:
+
+| Model | Validation RMSE | Training RMSE | MAE |
+|---|---|---|---|
+| Dummy (mean) | 41.67 ± 0.00 | 41.67 | 36.97 |
+| Ridge (alpha 100) | 21.64 ± 1.38 | 21.44 | 17.72 |
+| Lasso (alpha 0.1) | 21.63 ± 1.38 | 21.44 | 17.72 |
+
+A linear model halves the error of the mean predictor. Ridge and Lasso are identical; Lasso
+only switches off the 7 constant columns. Details in the docs; this is simulated data.
+
 Details, decisions and the evaluation protocol: [docs/problem_framing.md](docs/problem_framing.md).
 
 ## Data
@@ -52,7 +65,7 @@ Details, decisions and the evaluation protocol: [docs/problem_framing.md](docs/p
 | Dataset | Used for | Source | Licence / terms |
 | --- | --- | --- | --- |
 | SCANIA Component X (real truck fleet) | Failure classification, cost-based threshold, anomaly detection | Swedish National Data Service (SND), [doi:10.5878/jvb5-d390](https://doi.org/10.5878/jvb5-d390) | Open access; cite the dataset and the paper below |
-| Turbofan Engine Degradation Simulation (C-MAPSS, FD001) | Remaining useful life (RUL) | NASA Prognostics Data Repository | See source page |
+| Turbofan Engine Degradation Simulation (C-MAPSS, FD001) | Remaining useful life (RUL) | NASA Prognostics Data Repository, [PCoE data set page](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) (also [data.nasa.gov](https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data)) | **No licence stated** on the NASA pages (the catalog entry says "License not specified"); users are asked to acknowledge the repository and the data donators, and use the data at their own risk. Simulated data, not real engines |
 
 Raw data is never committed; `scripts/download_data.sh` prepares it in `data/raw/`.
 
@@ -73,6 +86,13 @@ Why real data instead of the popular synthetic AI4I 2020 dataset: see
 - Lindgren, T., Steinert, O., Andersson Reyna, O., Kharazian, Z., & Magnússon, S. (2024).
   SCANIA Component X Dataset: A Real-World Multivariate Time Series Dataset for Predictive
   Maintenance [Data set]. Scania CV AB. https://doi.org/10.5878/jvb5-d390
+- Saxena, A., & Goebel, K. (2008). *Turbofan Engine Degradation Simulation Data Set*. NASA
+  Prognostics Data Repository, NASA Ames Research Center, Moffett Field, CA
+  (citation text as given on the NASA PCoE data set page; no DOI is stated).
 - Saxena, A., Goebel, K., Simon, D., & Eklund, N. (2008). Damage propagation modeling for
   aircraft engine run-to-failure simulation. *International Conference on Prognostics and
   Health Management (PHM 2008)*.
+
+Acknowledgment: the C-MAPSS data was provided by the NASA Ames Prognostics Center of
+Excellence (PCoE) through the NASA Prognostics Data Repository; thanks to NASA and the
+donators of the data. NASA states that users employ the data at their own risk.

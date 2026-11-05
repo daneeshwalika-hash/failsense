@@ -1,7 +1,7 @@
-.PHONY: help setup data parquet validate train cv regularization analysis test leakage lint
+.PHONY: help setup data parquet validate train cv regularization rul-baseline analysis test leakage lint
 
 help:   ## Show this help
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-14s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
 
 setup:  ## Install the environment and git hooks
 	uv sync
@@ -24,6 +24,9 @@ cv:     ## 5-fold CV of all baseline models on the training split, paired compar
 
 regularization:  ## L2 / L1 / ElasticNet grid, non-zero coefs, top L1 features (slow: ~17 min, saga)
 	uv run python -m failsense.models.regularization_cv
+
+rul-baseline:  ## C-MAPSS FD001 RUL: Dummy / Ridge / Lasso baselines, GroupKFold by engine, MLflow
+	uv run python -m failsense.rul.baseline
 
 analysis:  ## Outlier analysis and time_step check (writes CSV/Markdown/figures to reports/)
 	uv run python -m failsense.analysis.outliers
