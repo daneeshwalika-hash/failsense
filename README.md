@@ -6,6 +6,19 @@ End-to-end predictive maintenance system on real truck fleet data: predicts comp
 
 > Work in progress — first release planned for November 2026.
 
+## Requirements
+
+- Linux or WSL2 (Ubuntu), Python 3.12 (uv installs it from `.python-version`), [uv](https://docs.astral.sh/uv/).
+- **System package `libgomp1` (OpenMP runtime) is required for LightGBM** on Linux:
+
+  ```bash
+  sudo apt install libgomp1
+  ```
+
+  Without it `import lightgbm` fails with `OSError: libgomp.so.1: cannot open shared object file`,
+  and with it every test that imports the model comparison, `make test` and the pre-commit
+  pytest hook. A fresh WSL Ubuntu does not have it; GitHub's `ubuntu-latest` runner does.
+
 ## Quickstart
 
 ```bash
@@ -26,9 +39,11 @@ Dependency notes:
 - **XGBoost is installed as `xgboost-cpu`** (CPU-only build, same `import xgboost`). The plain
   `xgboost` package pulls NVIDIA NCCL libraries on Linux, which a CPU project does not need;
   this matters for the size of the Docker image.
-- **LightGBM needs the system OpenMP runtime** `libgomp1` (`sudo apt install libgomp1` on
-  Debian/Ubuntu/WSL). It is missing on a fresh WSL install and in `python:*-slim` Docker images,
-  so the Dockerfile must install it.
+- **LightGBM needs the system package `libgomp1`** (see Requirements above).
+- **Note for 07.11 (Dockerfile):** `python:*-slim` images do not contain `libgomp1` either, so the
+  Docker image must install it (`apt-get update && apt-get install -y --no-install-recommends
+  libgomp1`), or `import lightgbm` fails inside the container. Use `xgboost-cpu` (already the
+  dependency) to keep the image small.
 
 ## Results so far
 
