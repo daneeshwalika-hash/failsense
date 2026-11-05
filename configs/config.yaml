@@ -62,6 +62,14 @@ features:
   # Starting value 0.2, not tuned; change it only with a paired comparison.
   top_fraction: 0.2
 
+rul:
+  # RUL cap for C-MAPSS (cycles). In the first part of an engine's life the sensors show
+  # no degradation, so "300 cycles left" and "200 cycles left" look identical; asking a
+  # model to tell them apart only adds noise. 125 is the value commonly used for FD001
+  # (a convention, not a measurement): RUL = min(max_cycle - cycle, cap).
+  cap: 125
+  mlflow_experiment: failsense-rul
+
 mlflow:
   # Local tracking: one SQLite file + one artifact folder in the repo root
   # (both git-ignored). Paths are relative to the repo root; failsense.tracking

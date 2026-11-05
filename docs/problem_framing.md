@@ -1,6 +1,9 @@
 # Problem Framing — FailSense
 
-> Status: **v0.7 (05.11.2026, plan day 02.11 caught up)**. Regularization (L2, L1,
+> Status: **v0.8 (05.11.2026, RUL baseline added)**. C-MAPSS FD001 (Q3): a linear model
+> halves the RMSE of the mean predictor (21.6 vs. 41.7 cycles); Ridge and Lasso are
+> identical (§6, RUL baseline).
+> v0.7 (05.11.2026, plan day 02.11 caught up). Regularization (L2, L1,
 > ElasticNet) did not improve the linear reference: all linear variants stay at about 0.11
 > PR-AUC, so the limit is bias and non-linear models come next (§6). The reference stays
 > L2, C = 1. L1 shows that 80 of 196 coefficients are enough.
@@ -468,6 +471,61 @@ are not fully optimised solutions; they were not re-run. All other models conver
   against about 5 minutes for `make cv`. `saga` is the slow part, another reason not to tune
   it further.
 
+**RUL baseline on NASA C-MAPSS FD001 (measured 05.11, `python -m failsense.rul.baseline`,
+`make rul-baseline`, MLflow experiment `failsense-rul`).** Training file only; the official
+test file and `RUL_FD001.txt` have not been read (used once at the end).
+
+- **Data:** 100 training engines, 20,631 rows, cycles 1..max without gaps, lifetimes 128–362
+  cycles (median 199), no missing values; 3 operational settings + 21 sensors. The data is
+  **simulated** (NASA Ames PCoE), the RUL part shows the method, not real engine performance.
+- **Target:** `RUL = max cycle of the engine − cycle`, capped at **125** (`rul.cap` in the
+  config): early in life the sensors show no degradation, so the true RUL there is not
+  recoverable. 125 is the value commonly used for FD001, a convention and not a measurement.
+  Capped target: mean 86.8, standard deviation 41.7. `max_cycle` and RUL are never features.
+- **Validation:** `GroupKFold(5)` by engine (80 / 20 engines per fold), so no engine is in
+  both parts; scaler inside the Pipeline, fitted per fold. Models: `DummyRegressor(mean)`,
+  Ridge (alpha 0.1–100), Lasso (alpha 0.001–1); all 24 inputs (settings + sensors).
+
+| Model | Validation RMSE | Training RMSE | Gap | Validation MAE |
+|---|---|---|---|---|
+| Dummy (mean) | 41.67 ± 0.00 | 41.67 | 0.00 | 36.97 |
+| Ridge, alpha 100 (best on this CV) | 21.64 ± 1.38 | 21.44 | +0.19 | 17.72 |
+| Lasso, alpha 0.1 (best on this CV) | 21.63 ± 1.38 | 21.44 | +0.19 | 17.72 |
+| Lasso, alpha 1 | 21.70 ± 1.37 | 21.53 | +0.17 | 17.81 |
+| Ridge alpha 100 + `cycle` (variant) | 20.09 ± 1.38 | 19.94 | +0.15 | 16.34 |
+
+| Paired comparison (per fold; positive = lower RMSE) | Mean difference | Better in |
+|---|---|---|
+| Ridge vs. Dummy | +20.04 ± 1.38 | 5 / 5 folds |
+| Lasso vs. Dummy | +20.04 ± 1.38 | 5 / 5 folds |
+| Lasso vs. Ridge | +0.00 ± 0.01 | 3 / 5 folds |
+| Ridge + `cycle` vs. Ridge | +1.54 ± 0.41 | 5 / 5 folds |
+
+- **The Dummy's RMSE (41.67) is the standard deviation of the target (41.7)**, as it must be
+  for a mean predictor. A linear model on the sensors halves it (about −20 cycles in every
+  fold). **Target rule:** later models must beat Ridge's 21.6 on the same folds.
+- **The regularization strength does not matter here.** Ridge with alpha 0.1 to 100 differs
+  only in the fourth decimal: with 24 standardized inputs and about 16,500 rows per fold the
+  penalty is negligible, so the "best alpha" is a tie. Alpha was chosen on the same CV that
+  reports the score (optimistic); real tuning is not worth it for the linear model.
+- **Constant columns in FD001 (measured):** `setting_3` and sensors 1, 5, 10, 16, 18, 19.
+  **Lasso sets exactly these seven coefficients to 0** in every fold for alpha up to 0.1 and
+  keeps the other 17. At alpha 1 it also switches off `setting_1`, `setting_2` and `sensor_6`
+  and the error rises slightly (21.70). So the linear model uses 17 informative inputs;
+  dropping the constant columns is planned for 11.11 (they carry no information and need
+  no Lasso).
+- **Engine age (`cycle`) adds information** (−1.54 RMSE, 5 / 5 folds) and is a legitimate
+  input at prediction time, but it is **not in the main models yet**: training rows cover the
+  whole life of an engine, while the official test engines are cut at a random point before
+  failure, so its distribution differs between training and test (the same question as
+  `time_step` in SCANIA, §8). To be decided with the time-series features on 11.11.
+- **Caveat for the final test:** the cross validation scores every row of the validation
+  engines; the official test evaluates only the last cycle of each truncated test engine. CV
+  RMSE is therefore not comparable with published test RMSE values. The last-cycle
+  evaluation (and the use of `RUL_FD001.txt`) happens once, at the end.
+- **Next (11.11):** drop constant sensors, rolling mean/std features per engine (past cycles
+  only), LightGBM, all with the same folds.
+
 **Target rule.** Every new model must beat the logistic-regression baseline **on the same
 folds**, compared fold by fold, not only on the mean. A numeric business target (total cost
 on validation) is set on 06.11 after calibration and threshold choice, not before.
@@ -535,6 +593,11 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v0.8 (05.11.2026, tasks of plan day 02.11, RUL part):** C-MAPSS FD001 baseline (Q3):
+  RUL labels with cap 125, `GroupKFold` by engine, Dummy / Ridge / Lasso, RMSE and MAE in
+  MLflow experiment `failsense-rul`; linear model halves the Dummy's RMSE (21.6 vs. 41.7),
+  Ridge = Lasso, Lasso zeros exactly the 7 constant columns, `cycle` variant measured but not
+  adopted; caveat on CV vs. last-cycle test evaluation (§6).
 - **v0.7 (05.11.2026, tasks of plan day 02.11):** regularization of the logistic-regression
   reference (L2, L1, ElasticNet, C): no proven gain, reference stays L2 with C = 1; L1 keeps
   80 of 196 coefficients at no measurable cost; linear models saturate at about 0.11 PR-AUC
