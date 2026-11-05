@@ -271,12 +271,59 @@ def build_preprocessor(
     return ColumnTransformer(transformers=transformers, remainder="drop")
 
 
+# Penalties of the logistic regression, in our own readable names.
+# scikit-learn >= 1.8 no longer wants ``penalty=...`` (deprecated, removed in 1.10);
+# the penalty is chosen by ``l1_ratio``: 0 = L2, 1 = L1, in between = ElasticNet.
+PENALTIES: tuple[str, ...] = ("l2", "l1", "elasticnet")
+
+
+def logreg_penalty_settings(
+    penalty: str,
+    C: float,  # noqa: N803 - `C` is the name in scikit-learn and the literature
+    l1_ratio: float | None,
+) -> dict[str, float | str]:
+    """Translate (penalty, C, l1_ratio) into ``LogisticRegression`` arguments.
+
+    * ``"l2"``: ``l1_ratio=0``, solver ``lbfgs`` (the default since 27.10, so earlier
+      results reproduce exactly).
+    * ``"l1"``: ``l1_ratio=1``, solver ``saga``.
+    * ``"elasticnet"``: ``0 < l1_ratio < 1``, solver ``saga``.
+
+    Why ``saga`` for L1 and ElasticNet: according to the scikit-learn 1.9 solver
+    table, ``lbfgs`` handles only L2, ``liblinear`` only L1 or L2, and only ``saga``
+    supports all three. Using ``saga`` for both L1 and ElasticNet means they differ
+    only in the penalty, not in the optimiser. ``saga`` converges fast only on
+    features of similar scale, which the scaler inside the Pipeline provides.
+
+    Raises:
+        ValueError: If ``penalty`` is unknown, ``C <= 0``, ``l1_ratio`` is missing
+            or outside (0, 1) for ElasticNet, or given for L1/L2 (it would be ignored
+            silently otherwise).
+    """
+    if penalty not in PENALTIES:
+        raise ValueError(f"unknown penalty {penalty!r}, choose one of {list(PENALTIES)}")
+    if not C > 0:
+        raise ValueError(f"C must be positive, got {C}")
+    if penalty == "elasticnet":
+        if l1_ratio is None or not 0 < l1_ratio < 1:
+            raise ValueError(f"elasticnet needs 0 < l1_ratio < 1, got {l1_ratio}")
+        return {"C": C, "l1_ratio": float(l1_ratio), "solver": "saga"}
+    if l1_ratio is not None:
+        raise ValueError(f"l1_ratio is only used with penalty='elasticnet', got {penalty!r}")
+    if penalty == "l1":
+        return {"C": C, "l1_ratio": 1.0, "solver": "saga"}
+    return {"C": C, "l1_ratio": 0.0, "solver": "lbfgs"}
+
+
 def build_logreg_pipeline(
     random_state: int,
     categorical_columns: Sequence[str] = (),
     scaler: str = "standard",
     imbalance: str = "balanced",
     log1p_columns: Sequence[str] = (),
+    penalty: str = "l2",
+    C: float = 1.0,  # noqa: N803 - same name as in scikit-learn
+    l1_ratio: float | None = None,
 ) -> Pipeline:
     """Preprocessor (-> SMOTE) -> logistic regression, as one estimator.
 
@@ -290,6 +337,12 @@ def build_logreg_pipeline(
         imbalance: One of ``IMBALANCE_STRATEGIES``.
         log1p_columns: Columns that get ``log1p`` before the scaler (see
             ``build_preprocessor``). Empty = off.
+        penalty: ``"l2"`` (default, ridge: shrinks all coefficients), ``"l1"`` (lasso:
+            drives some coefficients to exactly 0 = built-in feature selection) or
+            ``"elasticnet"`` (mix of both, needs ``l1_ratio``).
+        C: Inverse regularisation strength: smaller = stronger penalty. The default 1.0
+            is the setting of all results before 02.11.
+        l1_ratio: Share of L1 in ElasticNet, ``0 < l1_ratio < 1``; ``None`` otherwise.
 
     * ``"none"``: ``class_weight=None``.
     * ``"balanced"``: ``class_weight="balanced"``. Errors on the rare positive
@@ -311,17 +364,20 @@ def build_logreg_pipeline(
     unscaled or many features; a ConvergenceWarning would be a red flag.
 
     Raises:
-        ValueError: If ``imbalance`` is not in ``IMBALANCE_STRATEGIES``.
+        ValueError: If ``imbalance`` is not in ``IMBALANCE_STRATEGIES`` or the
+            penalty settings are invalid (see ``logreg_penalty_settings``).
     """
     if imbalance not in IMBALANCE_STRATEGIES:
         raise ValueError(
             f"unknown imbalance strategy {imbalance!r}, choose one of {list(IMBALANCE_STRATEGIES)}"
         )
+    penalty_settings = logreg_penalty_settings(penalty, C, l1_ratio)
     preprocess = build_preprocessor(categorical_columns, scaler, log1p_columns)
     model = LogisticRegression(
         class_weight="balanced" if imbalance == "balanced" else None,
         max_iter=1000,
         random_state=random_state,
+        **penalty_settings,
     )
     if imbalance == "smote":
         return ImbPipeline(
@@ -332,6 +388,42 @@ def build_logreg_pipeline(
             ]
         )
     return Pipeline(steps=[("preprocess", preprocess), ("model", model)])
+
+
+# Kind of a preprocessed column, from the name prefix the ColumnTransformer gives it.
+_COLUMN_KINDS = (
+    ("num_log1p__", "numeric, log1p + scaled"),
+    ("num__", "numeric, scaled"),
+    ("cat__", "one-hot, NOT scaled"),
+)
+
+
+def coefficient_table(pipeline: Pipeline) -> pd.DataFrame:
+    """Coefficients of a fitted logistic-regression pipeline with column names.
+
+    Returns:
+        One row per column the model sees (after preprocessing): ``feature``
+        (``num__``/``num_log1p__``/``cat__`` prefix from the ColumnTransformer),
+        ``coef`` and ``kind``. Numeric columns are standardized, so their
+        coefficients are comparable with each other; one-hot columns are 0/1 and
+        **not scaled**, so their coefficients live on a different scale.
+
+    Raises:
+        ValueError: If the pipeline has no fitted ``model`` step with ``coef_``.
+    """
+    model = pipeline.named_steps.get("model")
+    if model is None or not hasattr(model, "coef_"):
+        raise ValueError("pipeline needs a fitted logistic-regression step named 'model'")
+    names = pipeline.named_steps["preprocess"].get_feature_names_out()
+    coefs = model.coef_.ravel()
+    kinds = [next((k for p, k in _COLUMN_KINDS if n.startswith(p)), "other") for n in names]
+    return pd.DataFrame({"feature": names, "coef": coefs, "kind": kinds})
+
+
+def count_nonzero_coefficients(pipeline: Pipeline) -> tuple[int, int]:
+    """Return ``(non-zero coefficients, all coefficients)`` of a fitted pipeline."""
+    coefs = coefficient_table(pipeline)["coef"].to_numpy()
+    return int((coefs != 0).sum()), int(coefs.size)
 
 
 def build_dummy_classifier() -> DummyClassifier:

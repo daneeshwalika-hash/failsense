@@ -101,6 +101,7 @@ def make_mini_scania(tmp_path: Path) -> Callable[..., dict[str, Any]]:
             "features": {"top_fraction": 0.2},
             "cv": {"n_splits": 3, "seed": 42},
             "seed": 42,
+            "paths": {"reports": str(tmp_path / "reports")},
             "mlflow": {
                 "db_path": str(tmp_path / "mlflow.db"),
                 "artifact_dir": str(tmp_path / "artifacts"),

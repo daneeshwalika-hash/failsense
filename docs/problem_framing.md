@@ -1,6 +1,10 @@
 # Problem Framing — FailSense
 
-> Status: **v0.6 (05.11.2026, plan day 30.10 caught up)**. Engineered features, imbalance
+> Status: **v0.7 (05.11.2026, plan day 02.11 caught up)**. Regularization (L2, L1,
+> ElasticNet) did not improve the linear reference: all linear variants stay at about 0.11
+> PR-AUC, so the limit is bias and non-linear models come next (§6). The reference stays
+> L2, C = 1. L1 shows that 80 of 196 coefficients are enough.
+> v0.6 (05.11.2026, plan day 30.10 caught up). Engineered features, imbalance
 > handling, outliers and the `time_step` check are measured (§3, §6, §8). Result in one line:
 > `log1p` on the skewed raw features is the first change that helps the linear baseline in
 > every fold; engineered features and SMOTE do not; the training cut-offs sit much earlier in
@@ -401,6 +405,69 @@ of the feature; nothing is removed and no threshold is chosen from validation sc
   becomes part of the logistic-regression reference from now on; boosting is invariant to it
   and does not need it.
 
+**Regularization (measured 05.11, `python -m failsense.models.regularization_cv`,
+`make regularization`, `k = 5`, same 5 folds, reference = specs + balanced + `log1p`, L2,
+C = 1).** scikit-learn 1.9 no longer wants `penalty=` (deprecated since 1.8); the penalty is
+set by `l1_ratio` (0 = L2, 1 = L1, in between = ElasticNet). L2 stays on `lbfgs`, so the
+reference reproduces exactly (0.1099). L1 and ElasticNet use `saga`, the only solver of the
+solver table that supports all three penalties; it needs scaled inputs, which the Pipeline
+provides. The model sees 196 columns after preprocessing (321 with engineered features).
+
+| Model | Validation PR-AUC | Training | Gap | Non-zero coefficients (over folds) | Runtime |
+|---|---|---|---|---|---|
+| L2, C = 1 (**reference**) | 0.1099 ± 0.0055 | 0.1254 | +0.016 | 195 of 196 | 21 s |
+| L2, C = 0.1 | 0.1117 ± 0.0051 | 0.1253 | +0.014 | 195 | 14 s |
+| L2, C = 0.01 | 0.1130 ± 0.0063 | 0.1230 | +0.010 | 195 | 12 s |
+| L1, C = 0.01 | 0.1117 ± 0.0074 | 0.1186 | +0.007 | **80** (77–87) | 62 s |
+| L1, C = 0.1 † | 0.1118 ± 0.0049 | 0.1251 | +0.013 | 151 (147–156) | 202 s |
+| L1, C = 1 † | 0.1099 ± 0.0053 | 0.1254 | +0.016 | 189 (184–192) | 246 s |
+| ElasticNet (l1_ratio 0.5), C = 0.1 | 0.1118 ± 0.0051 | 0.1254 | +0.014 | 166 (162–171) | 149 s |
+| L1, C = 0.1, + engineered features † | 0.1114 ± 0.0056 | 0.1292 | +0.018 | 278 of 321 | 319 s |
+
+† **Not converged:** `saga` reached `max_iter = 1000` in at least one fold (MLflow tag
+`converged = false`, param `n_iter_max`). The scores are kept for this exploratory step but
+are not fully optimised solutions; they were not re-run. All other models converged.
+
+| Paired comparison (per fold) | Mean difference | Better in |
+|---|---|---|
+| L2 C = 0.01 (best L2) vs. reference | +0.0032 ± 0.0042 | 3 / 5 folds |
+| L1 C = 0.1 (best L1 by mean) vs. reference | +0.0019 ± 0.0016 | 4 / 5 folds |
+| L1 C = 0.01 (80 coefficients) vs. reference | +0.0018 ± 0.0077 | 3 / 5 folds |
+| ElasticNet vs. reference | +0.0019 ± 0.0014 | 4 / 5 folds |
+| ElasticNet vs. L1 C = 0.1 | −0.0000 ± 0.0006 | 2 / 5 folds |
+| L1 + engineered vs. L1 C = 0.1 | −0.0004 ± 0.0033 | 3 / 5 folds |
+
+- **No setting gives a proven gain.** All differences (at most +0.003) are smaller than the
+  fold-to-fold spread (±0.005). "Best C" was chosen on the same CV that reports the score,
+  so even these small gains are optimistic. **Decision:** the logistic-regression reference
+  stays **L2, C = 1**. Real tuning (nested or separate evaluation) is not done for `saga`;
+  the hyperparameter search in the next step is for the two best models, most likely boosting.
+- **80 of 196 coefficients at no measurable cost.** With L1 and C = 0.01 the model keeps
+  80 of 196 columns (77–87 depending on the fold) and scores 0.1117 ± 0.0074, i.e. the same
+  as the reference within noise (+0.0018 ± 0.0077, 3 / 5 folds), with a smaller
+  train/validation gap (+0.007 instead of +0.016). More than half of the inputs are redundant
+  for the linear model.
+- **Linear models saturate at about 0.11 PR-AUC.** Raw features, specifications, `log1p`,
+  engineered features, SMOTE, three penalties and four values of C all end between 0.100 and
+  0.113. Stronger regularization lowers the gap but not the score, which is the sign of **high
+  bias** (the same diagnosis as the learning curve on 28.10): the model is too simple for the
+  problem, not too flexible. **Non-linear models (week 2: trees, boosting) are the next
+  step.**
+- **Can L1 use the engineered features?** No: 0.1114 vs. 0.1118 without them (−0.0004 ±
+  0.0033). Only one engineered feature (`397_19__share`) reaches the top 10.
+- **Collinearity: coefficients mean "selected", not "important".** The top features of the
+  best L1 model (`reports/regularization_q1_l1_top_features.md`) have coefficients up to
+  ±2.6 on standardized inputs, and bins of the same histogram get opposite signs
+  (`397_19` +2.60, `397_13` −1.27, `397_9` −1.05): the model uses differences between
+  neighbouring, strongly correlated bins. Such coefficients are unstable and must not be
+  read as feature importance; **SHAP is the tool for that (06.11)**. The one-hot
+  specification columns (5 of the top 10, e.g. `Spec_6_Cat7`) are 0/1 and **not scaled**, so
+  their coefficients are not on the same scale as the standardized numeric ones and can only
+  be compared with each other.
+- **Runtime:** the whole comparison takes about 17 minutes (`saga`, 5 folds in parallel),
+  against about 5 minutes for `make cv`. `saga` is the slow part, another reason not to tune
+  it further.
+
 **Target rule.** Every new model must beat the logistic-regression baseline **on the same
 folds**, compared fold by fold, not only on the mean. A numeric business target (total cost
 on validation) is set on 06.11 after calibration and threshold choice, not before.
@@ -468,6 +535,12 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v0.7 (05.11.2026, tasks of plan day 02.11):** regularization of the logistic-regression
+  reference (L2, L1, ElasticNet, C): no proven gain, reference stays L2 with C = 1; L1 keeps
+  80 of 196 coefficients at no measurable cost; linear models saturate at about 0.11 PR-AUC
+  (high bias, non-linear models next); three `saga` models did not converge and are marked
+  (MLflow tag `converged = false`); collinearity and one-hot scaling caveats for the
+  coefficients, SHAP on 06.11 (§6).
 - **v0.6 (05.11.2026, tasks of plan day 30.10):** engineered features (counter Δ and rate,
   histogram shares, mean bin, top-bin share), `time_step` with/without, class weight
   none/balanced/SMOTE incl. the calibration note, missing-value handling, outlier analysis and
