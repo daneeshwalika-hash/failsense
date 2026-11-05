@@ -69,6 +69,7 @@ def test_different_seed_gives_different_sample(big_labels: pd.DataFrame) -> None
 # --- what is drawn ----------------------------------------------------------
 
 
+@pytest.mark.leakage
 def test_never_draws_unknown_labels(labels: pd.DataFrame) -> None:
     sampled = sample_cutoffs(labels, n_per_vehicle=10, seed=0)
     assert sampled[CLASS_COL].notna().all()

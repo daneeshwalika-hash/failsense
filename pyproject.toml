@@ -27,11 +27,21 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+markers = [
+    # Run only these with `uv run pytest -m leakage` (or `make leakage`). They check the
+    # data-leakage rules of CLAUDE.md section 5; see tests/test_leakage.py.
+    "leakage: tests that protect against data leakage (splits, future information, labels as features)",
+]
 filterwarnings = [
     # Third-party: mlflow's own SQLAlchemy store uses the deprecated `noload` loader
     # (seen in test_learning_curve). Nothing we can fix in this repo; remove the
     # entry when an mlflow update stops emitting it.
     "ignore:The ``noload`` loader strategy is deprecated:sqlalchemy.exc.SADeprecationWarning",
+    # Third-party: mlflow's signature inference when logging a model (test_train).
+    # Pandas4Warning comes from mlflow/models/utils.py; the integer-column hint is
+    # about the integer class labels of predict(). Not our code; remove on an mlflow update.
+    "ignore:Operation with range is deprecated:pandas.errors.Pandas4Warning",
+    "ignore:Hint. Inferred schema contains integer column:UserWarning",
 ]
 
 [tool.ruff]

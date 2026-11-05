@@ -77,6 +77,7 @@ def test_feature_columns_match_dataset_structure() -> None:
     assert len(set(feature_columns())) == 105  # no duplicates
 
 
+@pytest.mark.leakage
 def test_feature_columns_contain_no_label_or_key_columns() -> None:
     forbidden = LABEL_COLUMNS | {VEHICLE_COL, TIME_COL}
     assert forbidden.isdisjoint(feature_columns())
@@ -95,6 +96,7 @@ def test_readouts_column_order_does_not_matter(readouts: pd.DataFrame) -> None:
 
 
 @pytest.mark.parametrize("label_col", sorted(LABEL_COLUMNS))
+@pytest.mark.leakage
 def test_label_column_in_readouts_is_rejected(readouts: pd.DataFrame, label_col: str) -> None:
     # Leakage guard: strict=True must reject every label column.
     readouts[label_col] = 1.0
@@ -137,6 +139,7 @@ def test_empty_readouts_are_rejected(readouts: pd.DataFrame) -> None:
 @pytest.mark.parametrize(
     "bad_times", [[0.0, 7.0, 3.0], [0.0, 3.0, 3.0]], ids=["unsorted", "duplicate"]
 )
+@pytest.mark.leakage
 def test_time_step_not_increasing_is_rejected(
     readouts: pd.DataFrame, bad_times: list[float]
 ) -> None:

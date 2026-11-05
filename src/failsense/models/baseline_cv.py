@@ -64,20 +64,18 @@ from failsense.data.labels import (
     class_bounds_from_config,
 )
 from failsense.data.sampling import sample_cutoffs, sampling_params_from_config
-from failsense.data.schema import counter_columns, feature_columns, histogram_groups
+from failsense.data.schema import counter_columns, histogram_groups
 from failsense.data.split import cv_params_from_config, make_group_folds
 from failsense.features.build import (
     add_counter_deltas,
     add_histogram_features,
     attach_specifications,
-    engineered_columns,
     features_params_from_config,
 )
 from failsense.models.pipeline import (
     build_dummy_classifier,
     build_logreg_pipeline,
-    select_categorical_columns,
-    select_feature_columns,
+    split_feature_columns,
 )
 from failsense.tracking import log_cv_run, setup_mlflow
 
@@ -279,20 +277,18 @@ def run(
     n_splits, cv_seed = cv_params_from_config(config)
     frame = load_training_frame(config, n_per_vehicle)
 
-    # Numeric features are selected *before* the specs are counted: the specs
-    # are text, so select_feature_columns skips them; they get their own list.
     # Four numeric column sets: raw / raw + engineered, each with and without
     # time_step (is it a real signal or only a selection effect of the cut-offs?).
-    engineered = engineered_columns(list(frame.columns))
-    raw_features = select_feature_columns(frame, exclude=engineered)
+    # The same split_feature_columns is used by train.py, so the evaluated model
+    # and the saved model use the same columns.
+    cols = split_feature_columns(frame)
+    engineered = cols.engineered
+    raw_features = cols.raw
     raw_no_ts = [c for c in raw_features if c != TIME_COL]
-    all_features = select_feature_columns(frame)
+    all_features = raw_features + engineered
     all_no_ts = [c for c in all_features if c != TIME_COL]
-    categorical = select_categorical_columns(frame)
-    # log1p only for the raw counters and histogram counts (non-negative by the
-    # data contract); time_step and engineered columns (deltas can be negative) stay as they are.
-    raw_names = set(feature_columns())
-    log1p_cols = [c for c in raw_features if c in raw_names]
+    categorical = cols.categorical
+    log1p_cols = cols.log1p
     y = frame[BINARY_COL].to_numpy()
     logger.info(
         "Training frame: %d rows, %d raw + %d engineered numeric + %d categorical features, "

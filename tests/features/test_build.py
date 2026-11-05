@@ -126,6 +126,7 @@ def test_deltas_and_rates_per_truck(readouts: pd.DataFrame) -> None:
     assert out.loc[20, f"{C}__rate"] == 0.2
 
 
+@pytest.mark.leakage
 def test_first_readout_of_each_truck_is_nan(readouts: pd.DataFrame) -> None:
     out = add_counter_deltas(readouts, [C])
     # Truck 2 starts at index 10, truck 1 at index 50: no delta from the other truck.
@@ -134,6 +135,7 @@ def test_first_readout_of_each_truck_is_nan(readouts: pd.DataFrame) -> None:
     assert np.isnan(out.loc[10, f"{C}__rate"])
 
 
+@pytest.mark.leakage
 def test_deltas_never_cross_the_truck_boundary() -> None:
     # Truck 1's last value is huge, truck 2's first value tiny: a delta across
     # the boundary would be hugely negative.
@@ -154,6 +156,7 @@ def test_deltas_keep_index_order_and_rows(readouts: pd.DataFrame) -> None:
     assert f"{C}__delta" not in readouts.columns  # input not modified
 
 
+@pytest.mark.leakage
 def test_no_future_leakage_in_deltas(readouts: pd.DataFrame) -> None:
     changed = readouts.copy()
     changed.loc[40, C] = 9999.0  # the LAST readout of truck 1 changes
@@ -187,6 +190,7 @@ def test_missing_columns_raise(readouts: pd.DataFrame) -> None:
 
 
 @pytest.mark.parametrize("times", [[10.0, 5.0, 20.0, 15.0, 15.0], [10.0, 5.0, 10.0, 15.0, 40.0]])
+@pytest.mark.leakage
 def test_unsorted_or_duplicate_time_step_raises(readouts: pd.DataFrame, times: list[float]) -> None:
     bad = readouts.assign(**{TIME_COL: times})  # truck 1 goes backwards / stands still
     with pytest.raises(ValueError, match="strictly increasing"):
@@ -327,6 +331,7 @@ def test_features_params_from_config() -> None:
 
 
 # --- leakage guards ----------------------------------------------------------------
+@pytest.mark.leakage
 def test_engineered_columns_never_contain_labels_or_vehicle_id(readouts: pd.DataFrame) -> None:
     out = add_counter_deltas(readouts, [C])
     new = engineered_columns(list(out.columns))
@@ -335,6 +340,7 @@ def test_engineered_columns_never_contain_labels_or_vehicle_id(readouts: pd.Data
     assert VEHICLE_COL not in new
 
 
+@pytest.mark.leakage
 def test_label_columns_in_input_are_not_transformed(readouts: pd.DataFrame) -> None:
     # Only the listed counters are turned into features, nothing else.
     df = readouts.assign(in_study_repair=1, length_of_study_time_step=100.0)
