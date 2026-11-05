@@ -212,3 +212,11 @@ def test_duplicate_vehicle_in_tte_is_rejected(tte: pd.DataFrame) -> None:
     tte.loc[1, VEHICLE_COL] = 1
     with pytest.raises(SchemaErrors):
         validate_frame(tte, tte_schema())
+
+
+def test_histogram_groups_match_histogram_columns() -> None:
+    from failsense.data.schema import histogram_groups
+
+    groups = histogram_groups()
+    assert [c for cols in groups.values() for c in cols] == histogram_columns()
+    assert len(groups["397"]) == 36
