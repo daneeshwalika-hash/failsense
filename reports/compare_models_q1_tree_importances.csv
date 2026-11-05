@@ -1,0 +1,11 @@
+feature,mean_importance,folds_nonzero,n_folds,kind,model
+num__459_9,0.31658,5,5,numeric,tree_depth8
+num__666_0,0.16735,5,5,numeric,tree_depth8
+num__459_10,0.09809,2,5,numeric,tree_depth8
+num__time_step,0.04939,5,5,numeric,tree_depth8
+num__459_15,0.02145,4,5,numeric,tree_depth8
+num__837_0,0.01693,5,5,numeric,tree_depth8
+num__397_3,0.01292,4,5,numeric,tree_depth8
+num__397_12,0.01099,5,5,numeric,tree_depth8
+num__459_16,0.01083,5,5,numeric,tree_depth8
+num__397_15,0.00973,4,5,numeric,tree_depth8
