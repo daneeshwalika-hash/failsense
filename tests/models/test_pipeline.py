@@ -334,13 +334,84 @@ def test_all_nan_column_in_training_is_dropped_not_an_error(rows: pd.DataFrame) 
     The pipeline keeps working (fit and predict use the same reduced width), but
     the model silently has one feature less. We keep this sklearn default on
     purpose: zero-filling (keep_empty_features=True) would feed constant noise.
+    sklearn announces the drop with a UserWarning; the test expects it.
     """
     x, y = _xy(rows)
     x = x.copy()
     x["666_0"] = np.nan
-    pipe = build_logreg_pipeline(42).fit(x, y)
-    n_in = x.shape[1]
-    assert pipe.named_steps["preprocess"].transform(x).shape[1] == n_in - 1
-    x_new = x.iloc[:4].copy()
-    x_new["666_0"] = 1.0  # values appear at predict time: ignored, no crash
-    assert pipe.predict_proba(x_new).shape == (4, 2)
+    with pytest.warns(UserWarning, match="Skipping features without any observed values"):
+        pipe = build_logreg_pipeline(42).fit(x, y)
+        n_in = x.shape[1]
+        assert pipe.named_steps["preprocess"].transform(x).shape[1] == n_in - 1
+        x_new = x.iloc[:4].copy()
+        x_new["666_0"] = 1.0  # values appear at predict time: ignored, no crash
+        assert pipe.predict_proba(x_new).shape == (4, 2)
+
+
+# --- log1p branch (30.10) -------------------------------------------------------------
+@pytest.fixture
+def skewed() -> pd.DataFrame:
+    """Non-negative, right-skewed counters (+ time_step, one column with NaN)."""
+    rng = np.random.default_rng(1)
+    n = 80
+    counter = rng.lognormal(mean=3.0, sigma=2.0, size=n)
+    other = rng.lognormal(mean=1.0, sigma=1.0, size=n)
+    other[::9] = np.nan
+    return pd.DataFrame({"171_0": counter, "666_0": other, "time_step": rng.uniform(0, 100, n)})
+
+
+def test_log1p_branch_matches_manual_log1p_then_scale(skewed: pd.DataFrame) -> None:
+    pre = build_preprocessor(log1p_columns=["171_0"])
+    out = pre.fit_transform(skewed)
+    manual = np.log1p(skewed["171_0"].to_numpy())
+    manual = (manual - manual.mean()) / manual.std()
+    # transformer order: generic numeric branch first, then the log1p branch
+    np.testing.assert_allclose(out[:, -1], manual, rtol=1e-6)
+    assert [name for name, *_ in pre.transformers] == ["num", "num_log1p"]
+
+
+def test_log1p_columns_are_not_processed_twice(skewed: pd.DataFrame) -> None:
+    out = build_preprocessor(log1p_columns=["171_0"]).fit_transform(skewed)
+    assert out.shape[1] == skewed.shape[1]  # 3 columns in, 3 out - not 4
+
+
+def test_log1p_reduces_the_skew(skewed: pd.DataFrame) -> None:
+    plain = build_preprocessor().fit_transform(skewed)[:, 0]
+    logged = build_preprocessor(log1p_columns=["171_0"]).fit_transform(skewed)[:, -1]
+    assert abs(pd.Series(logged).skew()) < abs(pd.Series(plain).skew())
+
+
+def test_log1p_keeps_rows_and_nan_is_imputed_first(skewed: pd.DataFrame) -> None:
+    pre = build_preprocessor(log1p_columns=["666_0"])  # the column with NaN
+    out = pre.fit_transform(skewed)
+    assert out.shape[0] == len(skewed) and np.isfinite(out).all()
+
+
+def test_log1p_refuses_negative_values(skewed: pd.DataFrame) -> None:
+    bad = skewed.copy()
+    bad.loc[3, "171_0"] = -5.0
+    with pytest.raises(ValueError, match="non-negative"):
+        build_preprocessor(log1p_columns=["171_0"]).fit(bad)
+
+
+def test_log1p_default_is_off_and_reproduces_the_old_model(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    default = build_logreg_pipeline(42).fit(x, y)
+    explicit = build_logreg_pipeline(42, log1p_columns=()).fit(x, y)
+    assert [t[0] for t in default.named_steps["preprocess"].transformers] == ["num"]
+    np.testing.assert_allclose(default.predict_proba(x), explicit.predict_proba(x))
+
+
+@pytest.mark.parametrize("leak", ["vehicle_id", "repair_within_horizon"])
+def test_log1p_columns_cannot_be_forbidden_columns(leak: str) -> None:
+    with pytest.raises(ValueError, match="leakage"):
+        build_preprocessor(log1p_columns=[leak])
+
+
+def test_log1p_pipeline_fits_in_cross_validation(skewed: pd.DataFrame) -> None:
+    y = (skewed["171_0"] > skewed["171_0"].median()).astype(int).to_numpy()
+    groups = pd.DataFrame({"vehicle_id": np.arange(len(skewed)) // 2})
+    folds = make_group_folds(groups.assign(repair_within_horizon=y), n_splits=3, seed=42)
+    pipe = build_logreg_pipeline(42, log1p_columns=["171_0"])
+    result = cross_validate(pipe, skewed, y, cv=folds, scoring="roc_auc", n_jobs=2)
+    assert len(result["test_score"]) == 3

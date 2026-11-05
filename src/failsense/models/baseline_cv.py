@@ -64,7 +64,7 @@ from failsense.data.labels import (
     class_bounds_from_config,
 )
 from failsense.data.sampling import sample_cutoffs, sampling_params_from_config
-from failsense.data.schema import counter_columns, histogram_groups
+from failsense.data.schema import counter_columns, feature_columns, histogram_groups
 from failsense.data.split import cv_params_from_config, make_group_folds
 from failsense.features.build import (
     add_counter_deltas,
@@ -117,6 +117,8 @@ COMPARISONS: tuple[tuple[str, str], ...] = (
     # 30.10: imbalance handling (logreg_specs_standard = class_weight "balanced").
     ("logreg_specs_standard", "logreg_specs_none"),
     ("logreg_specs_smote", "logreg_specs_standard"),
+    # 30.10: log1p on the skewed raw counters / histogram counts.
+    ("logreg_specs_log1p", "logreg_specs_standard"),
     ("logreg_specs_eng", "logreg_specs_standard"),
     ("logreg_specs_no_ts", "logreg_specs_standard"),
     ("logreg_specs_eng_no_ts", "logreg_specs_eng"),
@@ -138,11 +140,17 @@ def table_path(config: Mapping[str, Any], split: str, table: str) -> Path:
     return csv_path
 
 
-def read_table(path: Path) -> pd.DataFrame:
-    """Read a Parquet or CSV file, chosen by the file extension."""
+def read_table(path: Path, columns: Sequence[str] | None = None) -> pd.DataFrame:
+    """Read a Parquet or CSV file, chosen by the file extension.
+
+    Args:
+        path: File to read.
+        columns: Only these columns (saves memory for the 1 GB readouts);
+            ``None`` = all columns.
+    """
     if path.suffix == ".parquet":
-        return pd.read_parquet(path)
-    return pd.read_csv(path)
+        return pd.read_parquet(path, columns=None if columns is None else list(columns))
+    return pd.read_csv(path, usecols=None if columns is None else list(columns))
 
 
 def build_training_frame(
@@ -183,6 +191,34 @@ def build_training_frame(
         frame = add_histogram_features(frame, hist_groups, top_fraction)
     frame[BINARY_COL] = sampled[BINARY_COL].astype(int)
     return frame
+
+
+def load_training_frame(config: Mapping[str, Any], n_per_vehicle: int | None) -> pd.DataFrame:
+    """Training split -> sampled cut-offs with engineered features and specs.
+
+    One place for the data preparation that ``baseline_cv`` and the analysis
+    CLIs (outliers, time_step check) share, so they all look at exactly the
+    same rows. Only the **training** split is read.
+    """
+    _, sampling_seed = sampling_params_from_config(config)
+    readouts = read_table(table_path(config, "train", "readouts"))
+    tte = read_table(table_path(config, "train", "tte"))
+    specs = read_table(table_path(config, "train", "specifications"))
+    logger.info("Loaded %d readouts of %d trucks", len(readouts), readouts[VEHICLE_COL].nunique())
+
+    # Engineered features are always built; each model picks its columns.
+    frame = build_training_frame(
+        readouts,
+        tte,
+        class_bounds_from_config(config),
+        n_per_vehicle,
+        sampling_seed,
+        counter_cols=counter_columns(),
+        hist_groups=histogram_groups(),
+        top_fraction=features_params_from_config(config),
+    )
+    del readouts  # about 1 GB in RAM; not needed any more
+    return attach_specifications(frame, specs)
 
 
 def paired_comparison(candidate: np.ndarray, reference: np.ndarray) -> dict[str, float]:
@@ -241,25 +277,7 @@ def run(
     """
     _, sampling_seed = sampling_params_from_config(config)
     n_splits, cv_seed = cv_params_from_config(config)
-
-    readouts = read_table(table_path(config, "train", "readouts"))
-    tte = read_table(table_path(config, "train", "tte"))
-    specs = read_table(table_path(config, "train", "specifications"))
-    logger.info("Loaded %d readouts of %d trucks", len(readouts), readouts[VEHICLE_COL].nunique())
-
-    # Engineered features are always built; each model below picks its columns.
-    frame = build_training_frame(
-        readouts,
-        tte,
-        class_bounds_from_config(config),
-        n_per_vehicle,
-        sampling_seed,
-        counter_cols=counter_columns(),
-        hist_groups=histogram_groups(),
-        top_fraction=features_params_from_config(config),
-    )
-    del readouts  # about 1 GB in RAM; not needed any more
-    frame = attach_specifications(frame, specs)
+    frame = load_training_frame(config, n_per_vehicle)
 
     # Numeric features are selected *before* the specs are counted: the specs
     # are text, so select_feature_columns skips them; they get their own list.
@@ -271,6 +289,10 @@ def run(
     all_features = select_feature_columns(frame)
     all_no_ts = [c for c in all_features if c != TIME_COL]
     categorical = select_categorical_columns(frame)
+    # log1p only for the raw counters and histogram counts (non-negative by the
+    # data contract); time_step and engineered columns (deltas can be negative) stay as they are.
+    raw_names = set(feature_columns())
+    log1p_cols = [c for c in raw_features if c in raw_names]
     y = frame[BINARY_COL].to_numpy()
     logger.info(
         "Training frame: %d rows, %d raw + %d engineered numeric + %d categorical features, "
@@ -312,6 +334,10 @@ def run(
         "logreg_specs_none": (build_logreg_pipeline(**spec_kwargs, imbalance="none"), raw_features),
         "logreg_specs_smote": (
             build_logreg_pipeline(**spec_kwargs, imbalance="smote"),
+            raw_features,
+        ),
+        "logreg_specs_log1p": (
+            build_logreg_pipeline(**spec_kwargs, log1p_columns=log1p_cols),
             raw_features,
         ),
         "logreg_specs_eng": (build_logreg_pipeline(**spec_kwargs), all_features),
@@ -369,6 +395,7 @@ def run(
                     "model_repr": repr(model),
                     "n_numeric_features": len(numeric),
                     "imbalance_strategy": IMBALANCE_OF_MODEL.get(name, "balanced"),
+                    "log1p": name == "logreg_specs_log1p",
                     "engineered": any(c in engineered for c in numeric),
                     "uses_time_step": TIME_COL in numeric,
                 },

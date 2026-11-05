@@ -48,6 +48,7 @@ def test_comparisons_reference_existing_model_names() -> None:
         "logreg_balanced",
         "logreg_specs_standard",
         "logreg_specs_minmax",
+        "logreg_specs_log1p",
         "logreg_specs_none",
         "logreg_specs_smote",
         "logreg_specs_eng",

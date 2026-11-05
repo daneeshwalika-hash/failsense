@@ -1,6 +1,11 @@
 # Problem Framing — FailSense
 
-> Status: **v0.5 (29.10.2026)**. All SCANIA files are checked by a data contract, the
+> Status: **v0.6 (05.11.2026, plan day 30.10 caught up)**. Engineered features, imbalance
+> handling, outliers and the `time_step` check are measured (§3, §6, §8). Result in one line:
+> `log1p` on the skewed raw features is the first change that helps the linear baseline in
+> every fold; engineered features and SMOTE do not; the training cut-offs sit much earlier in
+> a truck's life than the validation readouts (KS = 0.43).
+> v0.5 (29.10): all SCANIA files are checked by a data contract, the
 > truck specifications are part of the Pipeline, and scaling and the specifications were
 > compared fold by fold: neither changes the linear baseline (see change log).
 > v0.4 (28.10): `k = 5` cut-offs per truck decided by cross validation, baselines measured
@@ -148,8 +153,33 @@ for a cut-off are built only from readouts up to that cut-off (§4, rule 3).
   13 times the training time. Because every model in week 2 (and the hyperparameter search)
   repeats this cost, `k = 5` is used. **Re-check with the best model on 05.11**, because a
   stronger model may use more data better (`--ks 5 10 all`).
-- The check of the `time_step` distribution at the sampled cut-offs against the last readout
-  in validation is moved to 30.10, together with the selection-effect check (§8).
+- **`time_step` check (measured 05.11, `python -m failsense.analysis.time_step_check`).**
+  `time_step` of the training cut-offs against the **last readout per truck in validation**
+  (readouts only, no labels):
+
+  | Sample | n | q05 | q25 | median | q75 | q95 | KS vs. validation |
+  |---|---|---|---|---|---|---|---|
+  | training cut-offs (`k = 5`) | 117,031 | 8.8 | 44.0 | 83.2 | 144.2 | 260.4 | **0.425** |
+  | training, all labelled readouts | 919,315 | 11.2 | 55.4 | 108.0 | 182.8 | 288.2 | 0.318 |
+  | validation, last readout per truck | 5,046 | 78.2 | 116.4 | 169.4 | 263.1 | 347.4 | — |
+
+  (KS = largest gap between the two empirical distribution functions; 0 = identical,
+  1 = separate. The p-value is 0 and says nothing here: with 100,000 rows any gap is
+  "significant".) Figure: `reports/figures/time_step_check_q1.png`.
+
+  **Conclusion: the training cut-offs do not imitate the validation situation.** The median
+  validation readout is twice as late as the median cut-off (169 vs. 83), and 95 % of the
+  validation trucks are seen after time step 78, where 25 % of the cut-offs lie below 44.
+  Even using every labelled readout (`k = all`) only reduces KS to 0.32, so the gap is not
+  caused by `k`. Plausible reasons (not yet tested): validation histories are truncated only
+  after a minimum length, and the last 48 steps of censored training trucks are excluded
+  (§3, labels), which removes late readouts from training. Consequence: the model is trained
+  on younger trucks than it is asked about (covariate shift on every cumulative counter).
+  Whether this costs score is open. **Open point (decided 05.11): the sampling is not changed
+  now.** It is tested in catch-up step 7 together with `compare_cutoffs`, on a **fixed
+  evaluation set per fold that imitates validation** (one late readout per truck), so the
+  validation rows stay the same while the training sample (e.g. cut-offs drawn from the
+  validation `time_step` distribution, or restricted to `time_step >= ~70`) is varied (§7).
 - Several cut-offs of one truck are safe because all of them stay in the same CV fold
   (`groups = vehicle_id`).
 
@@ -298,6 +328,79 @@ sample, so every model sees exactly the same rows and folds (§7).
   enough; mean and spread of the paired differences are reported together.
 - The diagnosis stays **high bias**: preprocessing does not fix a model that is too simple.
 
+**Feature engineering, imbalance and outliers (30.10 tasks, measured 05.11, `baseline_cv`,
+`k = 5`, same 5 folds).** All rows are logistic regression + specifications unless stated.
+`logreg_specs_standard` (class weight "balanced", raw features) is the reference.
+
+| Model | Validation PR-AUC | Training | Gap | Mean predicted probability |
+|---|---|---|---|---|
+| reference: balanced, raw | 0.1013 ± 0.0069 | 0.1147 | +0.013 | 0.351 |
+| + engineered features | 0.1026 ± 0.0063 | 0.1261 | +0.024 | 0.332 |
+| without `time_step` | 0.1016 ± 0.0068 | 0.1149 | +0.013 | 0.351 |
+| engineered, without `time_step` | 0.1028 ± 0.0057 | 0.1262 | +0.023 | 0.332 |
+| class weight none | 0.1033 ± 0.0044 | 0.1292 | +0.026 | **0.028** |
+| SMOTE (inside the CV pipeline) | 0.1007 ± 0.0085 | 0.1161 | +0.015 | 0.346 |
+| **`log1p` on raw counters and histogram counts** | **0.1099 ± 0.0055** | 0.1254 | +0.016 | 0.331 |
+
+| Paired comparison (per fold) | Mean difference | Better in |
+|---|---|---|
+| engineered vs. reference | +0.0013 ± 0.0056 | 3 / 5 folds |
+| without `time_step` vs. reference | +0.0002 ± 0.0003 | 4 / 5 folds |
+| engineered without `time_step` vs. engineered | +0.0002 ± 0.0008 | 3 / 5 folds |
+| balanced vs. none | −0.0020 ± 0.0029 | 2 / 5 folds |
+| SMOTE vs. balanced | −0.0006 ± 0.0017 | 2 / 5 folds |
+| **`log1p` vs. reference** | **+0.0086 ± 0.0053** | **5 / 5 folds** |
+
+- **Engineered features** (counter Δ and Δ/Δtime_step from the previous readout of the same
+  truck, histogram shares, weighted mean bin, top-bin share with `features.top_fraction = 0.2`):
+  +0.0013 is far inside the fold noise (±0.0056), while the train/validation gap doubles
+  (+0.013 → +0.024). The 125 extra columns are fitted on training trucks and do not transfer.
+  **Decision:** keep the functions, keep the logistic-regression reference without them;
+  re-test with boosting on 04.11. Counter `171_0` decreases in 7 of 1.12 million readouts
+  (the other 7 counters never); kept, not clipped.
+- **`time_step`:** with and without differ by +0.0002 ± 0.0003. For the linear model it is no
+  signal and no obvious selection shortcut. **Decision:** keep it until the boosting re-check
+  on 04.11 (trees can use it differently), and see the distribution shift in §3.
+- **Imbalance:** the three strategies are indistinguishable in PR-AUC (differences smaller than
+  their own noise), but they differ completely in the **predicted probabilities**: with class
+  weight "none" the mean probability is 0.028 (true rate 0.0276), i.e. the model is
+  **calibrated on average**; "balanced" and SMOTE inflate every probability to about 0.35.
+  PR-AUC only uses the ranking and cannot see this; the cost-based threshold and the LLM
+  report need real probabilities. **Decision:** keep "balanced" as the reference (earlier
+  numbers stay comparable), no SMOTE (same quality, twice the runtime, fractional values in
+  one-hot columns). **"none" vs. "balanced" + calibration is decided on 06.11** with Brier
+  score and reliability curve.
+- **Missing values:** `SimpleImputer(strategy="median")` inside the Pipeline, fitted per fold.
+  A column that is entirely missing in a training part is dropped by the imputer (the model
+  gets one feature less, announced by a warning); this sklearn default is kept on purpose
+  because zero-filling would feed a constant to the model. NaN at prediction time is imputed.
+
+**Outliers (measured 05.11, `python -m failsense.analysis.outliers`, training cut-offs only;
+`reports/outliers_q1_*.csv|md`, figures in `reports/figures/`).** Outlier = above Q3 + 3 × IQR
+of the feature; nothing is removed and no threshold is chosen from validation scores.
+
+- The raw counters and histogram counts are extremely right-skewed. Skewness of 342 for several
+  histogram-397 bins equals √n (√117,031 = 342), the maximum possible value: **one single row
+  dominates** the feature. It is truck 613 at `time_step` 356.6, histogram-397 total 3.1 × 10¹¹
+  (p99 of that total: 1.6 × 10⁸; the next-largest bin value is 4,000 × smaller). In total 11 of
+  117,031 cut-offs have a histogram bin above 10⁹; truck 8596 repeats the identical value
+  1.17 × 10¹⁰ in four consecutive readouts (a frozen value). These rows are the likely
+  **data errors**; they are too few (0.01 %) to matter for a count, but one such row inflates
+  the variance of a `StandardScaler`.
+- The wide tails are mostly **failure signal, not error.** Repair rate in outlier rows vs.
+  normal rows for the 10 features with the largest outlier share (overall rate 0.0276):
+  `167_9` 5.3 % vs. 2.3 % (×2.3), `309_0__rate` 4.9 % vs. 2.6 % (×1.9), `370_0` 4.1 % vs.
+  2.5 % (×1.6), `459_16` 3.8 % vs. 2.5 % (×1.5); the weakest is `370_0__rate` (×1.1). Clipping
+  these rows would delete the signal.
+- Zero-heavy histogram bins have IQR = 0: the fence is undefined and they are reported as such.
+- **`log1p` before the scaler** (inside the Pipeline, 105 raw counter and histogram columns;
+  no threshold, no row removed, order of values unchanged) is the **first change that helps
+  the linear model in every fold** (+0.0086 ± 0.0053, 5 / 5; smallest per-fold gain +0.0008,
+  largest +0.0143). The gain is modest relative to the fold spread, and the gap grows slightly
+  (+0.016), but it is consistent and costs nothing at prediction time. **Decision:** `log1p`
+  becomes part of the logistic-regression reference from now on; boosting is invariant to it
+  and does not need it.
+
 **Target rule.** Every new model must beat the logistic-regression baseline **on the same
 folds**, compared fold by fold, not only on the mean. A numeric business target (total cost
 on validation) is set on 06.11 after calibration and threshold choice, not before.
@@ -338,10 +441,19 @@ published for synthetic datasets.
   but not its physical meaning; the LLM report must not invent one.
 - **Censoring:** trucks without a repair give only partial information; their last 48 time
   steps are excluded from training.
-- **Possible selection effect (to check on 30.10):** in the EDA, censored trucks are observed
-  for at least 121 time units, repaired trucks from 73.4. Together with the excluded censored
-  readouts near the end, features such as truck age (`time_step`) might separate the groups
-  for reasons of study design rather than wear. Their effect is measured with and without them.
+- **Selection effect and distribution shift (checked 05.11).** In the EDA, censored trucks are
+  observed for at least 121 time units, repaired trucks from 73.4. Together with the excluded
+  censored readouts near the end, `time_step` might separate the groups for reasons of study
+  design rather than wear. For logistic regression, removing `time_step` changes nothing
+  (+0.0002 ± 0.0003), so there is no sign of a shortcut there. Separately, the training
+  cut-offs are **much earlier** than the validation last readouts (median 83 vs. 169,
+  KS = 0.43, §3), so the model is evaluated on older trucks than it was trained on. Open
+  point: tested in catch-up step 7 with a fixed, validation-like evaluation set (one late
+  readout per truck); until then the sampling stays as it is (§3).
+- **Data errors in the tails:** a few rows (11 of 117,031 with a histogram bin above 10⁹, one
+  of them 4,000 × above the rest) look like sensor or logging errors. They are kept and
+  handled by `log1p`, not removed; a documented clipping or removal rule would have to be
+  fitted on training data only.
 - The cost matrix comes from a research challenge, not from a real service department.
 - One component type in one manufacturer's fleet; results do not transfer automatically to
   other components or vehicles.
@@ -356,6 +468,12 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v0.6 (05.11.2026, tasks of plan day 30.10):** engineered features (counter Δ and rate,
+  histogram shares, mean bin, top-bin share), `time_step` with/without, class weight
+  none/balanced/SMOTE incl. the calibration note, missing-value handling, outlier analysis and
+  `log1p` (first consistent gain: +0.0086 ± 0.0053, 5/5 folds), and the `time_step`
+  distribution check (KS = 0.43: training cut-offs are much earlier than the validation last
+  readouts) added to §3, §6 and §8; decisions for 04.11 and 06.11 documented; the `time_step` shift is an open point for catch-up step 7 (sampling unchanged).
 - **v0.5 (29.10.2026):** pandera data contract for all SCANIA files, verified on the real data
   (§3); specifications joined by `vehicle_id` and one-hot encoded in a `ColumnTransformer`
   (§3, §4); two additional leakage guards (§4); StandardScaler vs. MinMaxScaler and

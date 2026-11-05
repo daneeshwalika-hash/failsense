@@ -118,3 +118,15 @@ def test_imbalance_param_names_exist_in_comparisons() -> None:
 
     assert {"logreg_specs_none", "logreg_specs_smote"} <= {n for pair in COMPARISONS for n in pair}
     assert set(IMBALANCE_OF_MODEL.values()) <= {*IMBALANCE_STRATEGIES, "n/a"}
+
+
+def test_read_table_selects_columns(tmp_path: Path, readouts) -> None:
+    parquet = tmp_path / "r.parquet"
+    csv = tmp_path / "r.csv"
+    readouts.to_parquet(parquet)
+    readouts.to_csv(csv, index=False)
+    for path in (parquet, csv):
+        out = read_table(path, columns=["vehicle_id", "time_step"])
+        assert list(out.columns) == ["vehicle_id", "time_step"]
+        assert len(out) == len(readouts)
+    assert list(read_table(csv).columns) == list(readouts.columns)  # None = all
