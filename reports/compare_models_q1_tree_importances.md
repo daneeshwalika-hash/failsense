@@ -1,8 +1,10 @@
-# Top 10 impurity-based importances of tree_depth8
+# Top 10 importances of tree_depth8
 
-Averaged over the 5 fold models. **Impurity importances are biased** towards features with many distinct values (counters over one-hot columns) and are computed on the training data; SHAP (06.11) is the proper tool.
+Method: impurity-based importance (mean over the fold models).
 
-| rank | feature | kind | mean importance | non-zero in folds |
+**Biased:** impurity and gain importances favour features with many distinct values (counters over one-hot columns) and features used early; they are computed on training data. They are pointers, not explanations: SHAP (06.11) is the proper tool.
+
+| rank | feature | kind | importance | non-zero in folds |
 |---|---|---|---|---|
 | 1 | num__459_9 | numeric | 0.3166 | 5/5 |
 | 2 | num__666_0 | numeric | 0.1674 | 5/5 |

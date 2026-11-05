@@ -21,6 +21,15 @@ make help       # all targets
 
 `make leakage` runs only the data-leakage tests (`pytest -m leakage`).
 
+Dependency notes:
+
+- **XGBoost is installed as `xgboost-cpu`** (CPU-only build, same `import xgboost`). The plain
+  `xgboost` package pulls NVIDIA NCCL libraries on Linux, which a CPU project does not need;
+  this matters for the size of the Docker image.
+- **LightGBM needs the system OpenMP runtime** `libgomp1` (`sudo apt install libgomp1` on
+  Debian/Ubuntu/WSL). It is missing on a fresh WSL install and in `python:*-slim` Docker images,
+  so the Dockerfile must install it.
+
 ## Results so far
 
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
@@ -32,11 +41,15 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 | Dummy (always the prior, = share of positives) | 0.0276 | 0.0276 | 0 |
 | Logistic regression, 106 raw features | 0.1014 ± 0.0047 | 0.1094 | +0.008 |
 | + truck specifications | 0.1013 ± 0.0069 | 0.1147 | +0.013 |
-| + `log1p` on counters and histogram counts (**reference**) | **0.1099 ± 0.0055** | 0.1254 | +0.016 |
+| + `log1p` on counters and histogram counts (**linear reference**) | 0.1099 ± 0.0055 | 0.1254 | +0.016 |
+| XGBoost, 300 rounds, untuned (no early stopping) | **0.1335 ± 0.0080** | 0.5147 | +0.381 |
+| XGBoost + engineered features | **0.1435 ± 0.0080** | 0.6124 | +0.469 |
 
-- The reference model is about 4× better than the Dummy, but the absolute score is **low**: a
-  linear model is limited by bias (learning curve, `docs/problem_framing.md` §6). Boosting
-  models are next.
+- The linear reference is about 4× better than the Dummy, but its score is **low**: a linear
+  model is limited by bias (learning curve, `docs/problem_framing.md` §6). Tree ensembles
+  (random forest, HistGradientBoosting, XGBoost, LightGBM) are clearly better (+0.021 to
+  +0.024, better in 5 of 5 folds) and indistinguishable from each other; they are not tuned
+  yet, and their large train/validation gap shows it.
 - `log1p` is the only change so far that wins in every fold (+0.0086 ± 0.0053, 5/5 folds).
   Engineered features (counter rates, histogram shares), SMOTE, and the specifications gave
   no real gain for the linear model.
