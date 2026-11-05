@@ -31,4 +31,5 @@ mlartifacts/
 *.Zone.Identifier
 .DS_Store
 mlflow.db
+optuna_q1.db
 CLAUDE.md

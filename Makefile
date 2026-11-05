@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare rul-baseline analysis test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register rul-baseline analysis test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -27,6 +27,15 @@ regularization:  ## L2 / L1 / ElasticNet grid, non-zero coefs, top L1 features (
 
 compare:  ## One table: logreg / kNN / GaussianNB / trees on the same folds (kNN is slow), MLflow
 	uv run python -m failsense.models.compare_models_cv
+
+tune:  ## Optuna search for XGBoost and LightGBM on the validation-like eval set (slow, see make help)
+	uv run python -m failsense.models.tune
+
+evaluate:  ## Tuned vs. untuned models on both eval sets: PR-AUC, ROC-AUC, Brier, top-5 % alerts
+	uv run python -m failsense.models.evaluate
+
+register:  ## Fit the winner on the training split and register it as failsense-q1 (alias candidate)
+	uv run python -m failsense.models.register
 
 rul-baseline:  ## C-MAPSS FD001 RUL: Dummy / Ridge / Lasso baselines, GroupKFold by engine, MLflow
 	uv run python -m failsense.rul.baseline

@@ -102,6 +102,18 @@ def make_mini_scania(tmp_path: Path) -> Callable[..., dict[str, Any]]:
             "cv": {"n_splits": 3, "seed": 42},
             "seed": 42,
             "paths": {"reports": str(tmp_path / "reports")},
+            "tuning": {
+                "n_trials": 4,
+                "timeout_minutes": 2,
+                "early_stopping_rounds": 5,
+                "max_rounds": 40,
+                "inner_val_fraction": 0.3,
+                "seed": 42,
+                "top_fraction": 0.2,
+                "storage": str(tmp_path / "optuna.db"),
+                "registered_model": "failsense-q1",
+                "alias": "candidate",
+            },
             "mlflow": {
                 "db_path": str(tmp_path / "mlflow.db"),
                 "artifact_dir": str(tmp_path / "artifacts"),

@@ -1,0 +1,18 @@
+{
+  "winner": "xgboost_step6_engineered",
+  "qualifying": [],
+  "reason": "no tuned model is clearly better than the untuned engineered XGBoost on the calibrated set (xgboost_tuned: +0.0015 vs. std 0.0040, 3/5 folds; lightgbm_tuned: +0.0022 vs. std 0.0100, 2/5 folds); the simpler untuned model is registered",
+  "family": "xgboost",
+  "params": {
+    "learning_rate": 0.05,
+    "max_depth": 4,
+    "min_child_weight": 1.0,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_lambda": 1.0,
+    "reg_alpha": 0.001
+  },
+  "engineered": true,
+  "n_rounds": 300,
+  "early_stopping_in_evaluation": false
+}

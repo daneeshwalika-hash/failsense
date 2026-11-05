@@ -75,6 +75,11 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   official validation histories are longer than a uniform cut of training histories would give
   (82 % vs. about 51 %), so the `time_step` shift is a property of the data. From here on,
   models are scored on the validation-like set; the official validation is the real check.
+- A **candidate model** is registered in the local MLflow registry as `failsense-q1` (alias
+  `candidate`): XGBoost with 125 engineered features, untuned (a hyperparameter search with Optuna
+  found nothing clearly better). On the validation-like evaluation set it reaches PR-AUC 0.057 and
+  ROC-AUC 0.66; alerting the riskiest 5 % of the trucks finds 15 % of the failures at 8 % precision
+  (about 3 × the base rate). Its probabilities are too high and not calibrated yet.
 - Not done yet: cost-based threshold, calibration, and every other question (Q2–Q5). No target
   for the total cost is set before the baselines are calibrated.
 

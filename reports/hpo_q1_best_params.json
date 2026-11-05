@@ -1,0 +1,74 @@
+{
+  "xgboost": {
+    "params": {
+      "learning_rate": 0.06355277407532701,
+      "subsample": 0.6641579273389968,
+      "colsample_bytree": 0.628452087300854,
+      "reg_lambda": 8.47893192755839,
+      "reg_alpha": 0.0033100891158848837,
+      "max_depth": 4,
+      "min_child_weight": 1.8796812087186583
+    },
+    "engineered": true,
+    "n_rounds": 163,
+    "best_value": 0.05848660337844654,
+    "n_trials": 24,
+    "n_complete": 20,
+    "n_pruned": 4,
+    "n_trials_target": 40,
+    "timed_out": true,
+    "timeout_minutes": 12.0,
+    "seed": 42,
+    "best_rounds_per_fold": [
+      124,
+      260,
+      344,
+      100,
+      163
+    ],
+    "fold_scores": [
+      0.07150934375750176,
+      0.0522245538872185,
+      0.045862996249877455,
+      0.05677026977963198,
+      0.06606585321800304
+    ],
+    "anchor_value": 0.05504928787831638
+  },
+  "lightgbm": {
+    "params": {
+      "learning_rate": 0.04819696860259227,
+      "subsample": 0.986294148542268,
+      "colsample_bytree": 0.762320978789274,
+      "reg_lambda": 2.9682519059728762,
+      "reg_alpha": 0.01818129648136299,
+      "num_leaves": 15,
+      "min_child_samples": 70
+    },
+    "engineered": true,
+    "n_rounds": 79,
+    "best_value": 0.05915065318095623,
+    "n_trials": 40,
+    "n_complete": 33,
+    "n_pruned": 7,
+    "n_trials_target": 40,
+    "timed_out": false,
+    "timeout_minutes": 12.0,
+    "seed": 42,
+    "best_rounds_per_fold": [
+      78,
+      77,
+      103,
+      79,
+      130
+    ],
+    "fold_scores": [
+      0.061532430021405016,
+      0.04916883231187242,
+      0.043815668612893044,
+      0.057483315470459734,
+      0.08375301948815095
+    ],
+    "anchor_value": 0.054356695244298335
+  }
+}
