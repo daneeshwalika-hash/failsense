@@ -206,3 +206,20 @@ def test_pipeline_with_specs_survives_parallel_cv(mixed: pd.DataFrame) -> None:
     pipe = build_logreg_pipeline(42, categorical_columns=["Spec_0", "Spec_1"])
     result = cross_validate(pipe, x, y, cv=folds, scoring="average_precision", n_jobs=2)
     assert len(result["test_score"]) == 3
+
+
+# --- engineered columns (30.10) ---------------------------------------------------
+def test_selector_picks_engineered_columns_and_rejects_forbidden(rows: pd.DataFrame) -> None:
+    from failsense.features.build import add_counter_deltas, add_histogram_features
+    from failsense.models.pipeline import numeric_feature_selector
+
+    eng = add_counter_deltas(rows[["vehicle_id", "time_step", "171_0"]], ["171_0"])
+    eng = add_histogram_features(eng.assign(h_0=1.0, h_1=3.0), {"h": ["h_0", "h_1"]}, 0.5)
+    cols = numeric_feature_selector(eng.drop(columns="vehicle_id"))
+    assert {"171_0__delta", "171_0__rate", "h__mean_bin", "h_0__share"} <= set(cols)
+    # select_feature_columns keeps them and still drops vehicle_id / labels
+    selected = select_feature_columns(eng.assign(in_study_repair=1))
+    assert "171_0__rate" in selected
+    assert "vehicle_id" not in selected and "in_study_repair" not in selected
+    with pytest.raises(ValueError, match="leakage"):
+        numeric_feature_selector(eng)  # vehicle_id still inside

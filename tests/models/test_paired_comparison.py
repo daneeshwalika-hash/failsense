@@ -43,6 +43,14 @@ def test_invalid_inputs_raise(candidate: list[float], reference: list[float]) ->
 
 
 def test_comparisons_reference_existing_model_names() -> None:
-    names = {"dummy_prior", "logreg_balanced", "logreg_specs_standard", "logreg_specs_minmax"}
+    names = {
+        "dummy_prior",
+        "logreg_balanced",
+        "logreg_specs_standard",
+        "logreg_specs_minmax",
+        "logreg_specs_eng",
+        "logreg_specs_no_ts",
+        "logreg_specs_eng_no_ts",
+    }
     for candidate, reference in COMPARISONS:
         assert {candidate, reference} <= names

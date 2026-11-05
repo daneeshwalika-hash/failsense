@@ -77,6 +77,18 @@ def histogram_columns() -> list[str]:
     return [f"{variable}_{i}" for variable, n_bins in HISTOGRAM_BINS.items() for i in range(n_bins)]
 
 
+def histogram_groups() -> dict[str, list[str]]:
+    """Return the bin columns of every histogram, bins in order.
+
+    Example: ``{"167": ["167_0", ..., "167_9"], ...}``. The bin order matters:
+    the position of a bin is its index in the weighted mean (feature engineering).
+    """
+    return {
+        variable: [f"{variable}_{i}" for i in range(n_bins)]
+        for variable, n_bins in HISTOGRAM_BINS.items()
+    }
+
+
 def feature_columns() -> list[str]:
     """Return all 105 raw feature columns of the operational readouts."""
     return counter_columns() + histogram_columns()

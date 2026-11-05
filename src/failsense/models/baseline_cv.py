@@ -17,13 +17,17 @@ What happens, step by step
    label (the "moments we ask the model").
 4. Features = the raw values of the readout at the cut-off. They are
    cumulative counters/histograms, so they only contain information up to
-   that moment (no future information). Engineered features follow on 30.10.
+   that moment (no future information).
+   Since 30.10 engineered features are added: counter deltas/rates (computed
+   on the full readouts of each truck, then picked at the cut-offs) and
+   histogram shares / mean bin / top-bin share (``failsense.features.build``).
    Since 29.10 the eight truck specifications are joined by ``vehicle_id``
    (``attach_specifications``) and one-hot encoded inside the Pipeline.
 5. ``make_group_folds``: 5 stratified folds by ``vehicle_id``.
 6. ``cross_validate`` for the Dummy baseline and the logistic-regression
    Pipelines (numeric only; + specs with StandardScaler; + specs with
-   MinMaxScaler) on exactly the same folds; PR-AUC (average precision) is the
+   MinMaxScaler; + engineered features; each with and without ``time_step``) on
+   exactly the same folds; PR-AUC (average precision) is the
    primary metric, ROC-AUC is shown for comparison only. Train scores are
    computed too (``return_train_score=True``): the gap between train and
    validation scores shows over- or underfitting (course day 28.10).
@@ -41,7 +45,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -50,10 +54,23 @@ import pandas as pd
 from sklearn.model_selection import cross_validate
 
 from failsense.config import load_config, resolve_path
-from failsense.data.labels import BINARY_COL, VEHICLE_COL, build_labels, class_bounds_from_config
+from failsense.data.labels import (
+    BINARY_COL,
+    TIME_COL,
+    VEHICLE_COL,
+    build_labels,
+    class_bounds_from_config,
+)
 from failsense.data.sampling import sample_cutoffs, sampling_params_from_config
+from failsense.data.schema import counter_columns, histogram_groups
 from failsense.data.split import cv_params_from_config, make_group_folds
-from failsense.features.build import attach_specifications
+from failsense.features.build import (
+    add_counter_deltas,
+    add_histogram_features,
+    attach_specifications,
+    engineered_columns,
+    features_params_from_config,
+)
 from failsense.models.pipeline import (
     build_dummy_classifier,
     build_logreg_pipeline,
@@ -74,6 +91,10 @@ RUN_TAGS = {"task": "q1_binary", "dataset": "scania_train", "stage": "baseline"}
 COMPARISONS: tuple[tuple[str, str], ...] = (
     ("logreg_specs_standard", "logreg_balanced"),
     ("logreg_specs_minmax", "logreg_specs_standard"),
+    # 30.10: engineered features, and the selection effect of time_step.
+    ("logreg_specs_eng", "logreg_specs_standard"),
+    ("logreg_specs_no_ts", "logreg_specs_standard"),
+    ("logreg_specs_eng_no_ts", "logreg_specs_eng"),
 )
 
 
@@ -105,6 +126,9 @@ def build_training_frame(
     class_bounds: tuple[float, ...],
     n_per_vehicle: int | None,
     seed: int,
+    counter_cols: Sequence[str] = (),
+    hist_groups: Mapping[str, Sequence[str]] | None = None,
+    top_fraction: float = 0.2,
 ) -> pd.DataFrame:
     """Labels -> sampled cut-offs -> the readout rows at those cut-offs + Q1 label.
 
@@ -112,10 +136,26 @@ def build_training_frame(
     so ``readouts.loc[sampled.index]`` selects exactly the sampled readouts.
     Only the binary label is attached; the other label columns stay in the
     label table and never come near the features.
+
+    Engineered features (both optional, off by default):
+
+    * ``counter_cols``: deltas/rates are computed on the **full** readouts
+      (they need the previous readout of the truck) and only then picked at
+      the cut-off rows. Only the key columns and the counters are copied for
+      this, not the whole ~1 GB table.
+    * ``hist_groups``: shares and mean bin use one row at a time, so they are
+      computed on the selected rows only (same result, far fewer rows).
     """
     labels = build_labels(readouts, tte, class_bounds)
     sampled = sample_cutoffs(labels, n_per_vehicle=n_per_vehicle, seed=seed)
     frame = readouts.loc[sampled.index].copy()
+    if counter_cols:
+        key_and_counters = readouts[[VEHICLE_COL, TIME_COL, *counter_cols]]
+        with_deltas = add_counter_deltas(key_and_counters, counter_cols)
+        new_cols = [c for c in with_deltas.columns if c not in key_and_counters.columns]
+        frame = frame.join(with_deltas.loc[sampled.index, new_cols])
+    if hist_groups:
+        frame = add_histogram_features(frame, hist_groups, top_fraction)
     frame[BINARY_COL] = sampled[BINARY_COL].astype(int)
     return frame
 
@@ -182,22 +222,37 @@ def run(
     specs = read_table(table_path(config, "train", "specifications"))
     logger.info("Loaded %d readouts of %d trucks", len(readouts), readouts[VEHICLE_COL].nunique())
 
+    # Engineered features are always built; each model below picks its columns.
     frame = build_training_frame(
-        readouts, tte, class_bounds_from_config(config), n_per_vehicle, sampling_seed
+        readouts,
+        tte,
+        class_bounds_from_config(config),
+        n_per_vehicle,
+        sampling_seed,
+        counter_cols=counter_columns(),
+        hist_groups=histogram_groups(),
+        top_fraction=features_params_from_config(config),
     )
     del readouts  # about 1 GB in RAM; not needed any more
     frame = attach_specifications(frame, specs)
 
     # Numeric features are selected *before* the specs are counted: the specs
     # are text, so select_feature_columns skips them; they get their own list.
-    features = select_feature_columns(frame)
+    # Four numeric column sets: raw / raw + engineered, each with and without
+    # time_step (is it a real signal or only a selection effect of the cut-offs?).
+    engineered = engineered_columns(list(frame.columns))
+    raw_features = select_feature_columns(frame, exclude=engineered)
+    raw_no_ts = [c for c in raw_features if c != TIME_COL]
+    all_features = select_feature_columns(frame)
+    all_no_ts = [c for c in all_features if c != TIME_COL]
     categorical = select_categorical_columns(frame)
-    x = frame[features + categorical]
     y = frame[BINARY_COL].to_numpy()
     logger.info(
-        "Training frame: %d rows, %d numeric + %d categorical features, positive rate %.4f",
+        "Training frame: %d rows, %d raw + %d engineered numeric + %d categorical features, "
+        "positive rate %.4f",
         len(frame),
-        len(features),
+        len(raw_features),
+        len(engineered),
         len(categorical),
         y.mean(),
     )
@@ -210,30 +265,34 @@ def run(
         "cv_seed": cv_seed,
         "n_rows": len(frame),
         "n_vehicles": int(frame[VEHICLE_COL].nunique()),
-        "n_numeric_features": len(features),
         "n_categorical_features": len(categorical),
         "positive_rate": round(float(y.mean()), 5),
+        "top_fraction": features_params_from_config(config),
     }
 
     # Same folds for every model -> fair comparison.
     folds = make_group_folds(frame, n_splits=n_splits, seed=cv_seed)
-    # Every model gets the same x; a pipeline without categorical columns
-    # drops the spec columns (remainder="drop"), so "logreg_balanced" is
-    # exactly the model of 27./28.10 (reproducibility anchor).
-    models = {
-        "dummy_prior": build_dummy_classifier(),
-        "logreg_balanced": build_logreg_pipeline(random_state=cv_seed),
-        "logreg_specs_standard": build_logreg_pipeline(
-            random_state=cv_seed, categorical_columns=categorical, scaler="standard"
+    # name -> (estimator, numeric columns). A pipeline without categorical
+    # columns drops the spec columns (remainder="drop"), so "logreg_balanced"
+    # is exactly the model of 27./28.10 (reproducibility anchor).
+    spec_kwargs = {"random_state": cv_seed, "categorical_columns": categorical}
+    models: dict[str, tuple[Any, list[str]]] = {
+        "dummy_prior": (build_dummy_classifier(), raw_features),
+        "logreg_balanced": (build_logreg_pipeline(random_state=cv_seed), raw_features),
+        "logreg_specs_standard": (build_logreg_pipeline(**spec_kwargs), raw_features),
+        "logreg_specs_minmax": (
+            build_logreg_pipeline(**spec_kwargs, scaler="minmax"),
+            raw_features,
         ),
-        "logreg_specs_minmax": build_logreg_pipeline(
-            random_state=cv_seed, categorical_columns=categorical, scaler="minmax"
-        ),
+        "logreg_specs_eng": (build_logreg_pipeline(**spec_kwargs), all_features),
+        "logreg_specs_no_ts": (build_logreg_pipeline(**spec_kwargs), raw_no_ts),
+        "logreg_specs_eng_no_ts": (build_logreg_pipeline(**spec_kwargs), all_no_ts),
     }
 
     summary: dict[str, dict[str, float]] = {}
     fold_scores: dict[str, np.ndarray] = {}  # primary metric per fold, per model
-    for name, model in models.items():
+    for name, (model, numeric) in models.items():
+        x = frame[numeric + categorical]
         # return_train_score=True: also score each fold's *training* part.
         # Costs extra time, but train vs. validation is today's key diagnostic.
         result = cross_validate(
@@ -261,7 +320,14 @@ def run(
                 run_name=f"{name}_k{n_cutoffs_label(n_per_vehicle)}",
                 cv_result=result,
                 metrics=SCORING,
-                params={**common_params, "model": name, "model_repr": repr(model)},
+                params={
+                    **common_params,
+                    "model": name,
+                    "model_repr": repr(model),
+                    "n_numeric_features": len(numeric),
+                    "engineered": any(c in engineered for c in numeric),
+                    "uses_time_step": TIME_COL in numeric,
+                },
                 tags=RUN_TAGS,
             )
 

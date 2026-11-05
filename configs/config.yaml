@@ -55,6 +55,13 @@ cv:
   n_splits: 5
   seed: 42
 
+features:
+  # Share of the highest bins that counts as the "top-bin share" of a histogram:
+  # n_top = max(1, round(top_fraction * n_bins)) per histogram. A fraction (not
+  # a fixed count) so the feature means the same for 10 and 36 bins.
+  # Starting value 0.2, not tuned; change it only with a paired comparison.
+  top_fraction: 0.2
+
 mlflow:
   # Local tracking: one SQLite file + one artifact folder in the repo root
   # (both git-ignored). Paths are relative to the repo root; failsense.tracking
