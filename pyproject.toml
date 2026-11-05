@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "imbalanced-learn>=0.14.2",
+    # LightGBM needs the system OpenMP runtime (apt: libgomp1). It is missing on a fresh
+    # WSL Ubuntu and in python:*-slim Docker images, so the Docker image must install it.
+    "lightgbm>=4.7.0",
     "matplotlib>=3.11.2",
     "mlflow>=3",
     "pandas>=3.1.0",
@@ -14,6 +17,10 @@ dependencies = [
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
+    # xgboost-cpu = the CPU-only build of XGBoost: the same `import xgboost`, but no NVIDIA/NCCL
+    # packages (the plain `xgboost` wheel pulls nvidia-nccl-cu13 on Linux). Much smaller, which
+    # matters for the Docker image; this project has no GPU.
+    "xgboost-cpu>=3.4.1",
 ]
 
 # FailSense is an application, not a published package. The build backend is only

@@ -1,0 +1,11 @@
+feature,mean_importance,folds_nonzero,n_folds,kind,model
+num__666_0,0.07251,5,5,numeric,xgboost
+num__459_9,0.05109,5,5,numeric,xgboost
+num__459_10,0.04239,5,5,numeric,xgboost
+num__158_6,0.03102,5,5,numeric,xgboost
+num__397_27,0.01439,5,5,numeric,xgboost
+cat__Spec_7_Cat4,0.01326,5,5,one-hot,xgboost
+cat__Spec_1_Cat1,0.01102,5,5,one-hot,xgboost
+num__167_5,0.01075,5,5,numeric,xgboost
+num__459_11,0.01049,5,5,numeric,xgboost
+cat__Spec_4_Cat0,0.01022,5,5,one-hot,xgboost

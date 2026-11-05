@@ -1,6 +1,10 @@
 # Problem Framing — FailSense
 
-> Status: **v0.9 (05.11.2026, plan day 03.11 caught up)**. kNN, Gaussian naive Bayes and
+> Status: **v1.0 (05.11.2026, plan day 04.11 caught up)**. Tree ensembles clearly beat the
+> linear reference: random forest, histogram boosting, XGBoost and LightGBM all reach about
+> 0.131–0.134 PR-AUC against 0.110 (better in 5 / 5 folds), with the engineered features worth
+> about +0.010 more on top. The candidates for tuning are XGBoost and LightGBM (§6).
+> v0.9 (05.11.2026, plan day 03.11 caught up). kNN, Gaussian naive Bayes and
 > single decision trees are compared with the logistic-regression reference in one table on
 > the same folds: none beats it (best: kNN 0.106 vs. 0.110); single trees overfit and are
 > far behind (§6). Boosting is added to the same table next.
@@ -533,6 +537,103 @@ monotone transformation gives the same tree.
   actual time matches the sequential figure, so brute-force kNN on 196 dimensions did not
   profit from running the folds in parallel. The whole table takes about 2.6 minutes.
 
+**Ensembles and boosting (measured 05.11, `make compare`, comparison set `v2`, `k = 5`, same 5
+folds by vehicle, raw features + specifications).** The four new models are added to the
+same table. Inputs: median imputer + one-hot specs, **no scaler, no `log1p`** (trees are
+invariant to monotone transformations). The three boosting models have the **same fixed
+budget, not tuned**: learning rate 0.05, 300 rounds, trees of depth 4 (XGBoost) or up to 31
+leaves (HistGradientBoosting, LightGBM; `min_samples_leaf` / `min_child_samples` 100),
+row/column sampling 0.8 for XGBoost and LightGBM, **no class weights**. The random forest has 300
+trees, `class_weight = "balanced_subsample"`, `min_samples_leaf = 50`.
+
+| Model | Validation PR-AUC | Training | Gap | Mean predicted probability | Runtime (5 folds) | Paired vs. reference |
+|---|---|---|---|---|---|---|
+| logistic regression (reference) | 0.1098 ± 0.0055 | 0.1254 | +0.016 | 0.331 | 30 s | — |
+| kNN k = 101, distance-weighted (best kNN) | 0.1057 ± 0.0113 | n/a | n/a | 0.026 | 28 s | −0.0041 ± 0.0131 (2 / 5) |
+| decision tree depth 8 (best tree) | 0.0806 ± 0.0020 | 0.1277 | +0.047 | 0.299 | 11 s | −0.0293 ± 0.0065 (0 / 5) |
+| Gaussian naive Bayes | 0.0514 ± 0.0008 | 0.0525 | +0.001 | 0.569 | 3 s | −0.0585 ± 0.0053 (0 / 5) |
+| **random forest** | **0.1339 ± 0.0079** | 0.7479 | +0.614 | 0.194 | 113 s | **+0.0240 ± 0.0093 (5 / 5)** |
+| HistGradientBoosting | 0.1309 ± 0.0054 | 0.9173 | +0.786 | 0.022 | 35 s | +0.0210 ± 0.0041 (5 / 5) |
+| **XGBoost** | 0.1335 ± 0.0080 | 0.5147 | +0.381 | 0.027 | 16 s | +0.0236 ± 0.0044 (5 / 5) |
+| LightGBM | 0.1331 ± 0.0040 | 0.9284 | +0.795 | 0.022 | 14 s | +0.0233 ± 0.0044 (5 / 5) |
+
+(The remaining kNN and tree variants are in `reports/compare_models_q1.csv` and §6 above.)
+
+- **Ensembles beat the linear reference in every fold:** +0.021 to +0.024 PR-AUC, about
+  twice the fold spread of the reference. This is the first family that clearly does.
+  The four ensembles are **indistinguishable from each other**: random forest vs. XGBoost
+  +0.0004 ± 0.0077 (2 / 5 folds), HistGradientBoosting −0.0026 ± 0.0031 (1 / 5), LightGBM
+  −0.0003 ± 0.0050 (2 / 5). The ranking 0.1339 > 0.1335 > 0.1331 > 0.1309 is not a result.
+- **The training scores are very high (0.51–0.93) and the gap is large, yet validation is
+  best.** The ensembles fit the training trucks almost perfectly (LightGBM 0.928, 300 rounds
+  with 31 leaves) and still rank unseen trucks better than anything else. The gap is the
+  price of the fixed, untuned budget (no early stopping, see below); regularisation and
+  fewer rounds are what step 7 tunes, with a group-aware inner split.
+- **Predicted probabilities:** boosting without class weights gives a mean of 0.022–0.027
+  (true rate 0.0276), calibrated on average like kNN; the random forest with balanced
+  subsamples gives 0.194.
+- **No early stopping, on purpose.** Early stopping needs validation data. A random split of
+  the training *rows* puts readouts of the same truck on both sides, so the stopping point
+  would be chosen on trucks the model has seen (leakage). scikit-learn's
+  HistGradientBoosting switches early stopping **on by default** for more than 10,000 rows
+  (`early_stopping="auto"`) with such a random split; it is turned off explicitly and a test
+  guards it. Tuning the number of rounds with a group-aware inner split is step 7.
+- **Parallelism, one level:** the 5 folds run in parallel and every model gets
+  `cores // folds = 3` threads (XGBoost, LightGBM, forest explicitly; HistGradientBoosting
+  has no `n_jobs`, joblib's worker processes limit its OpenMP threads to the same share).
+  The runs scale as expected (e.g. XGBoost 16 s for 5 folds against a one-fold estimate of
+  27 s if run one after another); there was no oversubscription. The whole table takes
+  6 min 54 s.
+- **Top 10 gain-based importances of XGBoost** (share of the total gain, mean over the fold
+  models; biased, SHAP on 06.11): `666_0` (0.073), `459_9` (0.051), `459_10` (0.042),
+  `158_6` (0.031), `397_27` (0.014), `Spec_7_Cat4` (0.013), `Spec_1_Cat1` (0.011), `167_5`,
+  `459_11`, `Spec_4_Cat0` (about 0.010). Histogram 459 and counter `666_0` lead as in the
+  single tree and in the outlier analysis; three of the ten are one-hot specification
+  categories. `time_step` is not in the top 10. Gain importance favours features used early
+  and with many distinct values and is computed on training data: a pointer, not an
+  explanation.
+
+**Re-checks of the best boosting model (XGBoost) on the same folds** (paired against the
+unchanged XGBoost; positive = better):
+
+| Variant | Validation PR-AUC | Mean predicted probability | Paired vs. XGBoost | Paired vs. reference |
+|---|---|---|---|---|
+| XGBoost (base) | 0.1335 ± 0.0080 | 0.027 | — | +0.0236 ± 0.0044 (5 / 5) |
+| without the specifications | 0.1266 ± 0.0041 | 0.027 | −0.0069 ± 0.0041 (0 / 5) | +0.0167 ± 0.0030 (5 / 5) |
+| without `time_step` | 0.1274 ± 0.0054 | 0.027 | −0.0061 ± 0.0032 (0 / 5) | +0.0175 ± 0.0035 (5 / 5) |
+| **with the engineered features** | **0.1435 ± 0.0080** | 0.026 | **+0.0101 ± 0.0078 (4 / 5)** | +0.0337 ± 0.0049 (5 / 5) |
+| with positive weight neg / pos = 35.2 | 0.1248 ± 0.0079 | **0.262** | −0.0087 ± 0.0081 (1 / 5) | +0.0149 ± 0.0096 (5 / 5) |
+
+- **The specifications help boosting** (−0.0069 without, in every fold), unlike the linear
+  model, where they changed nothing (§6, 29.10); as suspected on 29.10, they matter through
+  interactions. **Decision: keep them.**
+- **`time_step` helps boosting** (−0.0061 without it, in every fold). That is either real
+  wear information or the study-design selection effect of §8 (the training cut-offs are much
+  earlier than the validation readouts, §3); this comparison cannot tell which, because the
+  validation parts have the same distribution as the training cut-offs. **Decision: keep it
+  for now and test it on the validation-like fixed evaluation set in step 7.**
+- **The engineered features are the largest effect so far (+0.0101 ± 0.0078, 4 of 5 folds,
+  XGBoost 0.1435)**, but the mean is only 1.3 standard deviations of the fold differences and
+  one fold is negative, so it is **likely, not proven**. They did nothing for the linear model
+  (§6, 30.10): counter rates and histogram shares need interactions to be useful. **Decision:
+  carry them into step 7 as an input option.**
+- **A positive weight does not help** (−0.0087 ± 0.0081, 1 of 5 folds) and shifts the mean
+  predicted probability from 0.027 to 0.262; ranking quality does not improve, and the
+  probabilities would need re-calibration. **Decision: no class weights for boosting.** The
+  neg / pos ratio of 35.2 is taken once from the training labels (the positive rate is 0.028
+  in every fold), not fitted per fold.
+- **Candidates for step 7 (hyperparameter search with a group-aware inner split):
+  XGBoost and LightGBM** (statistically tied with each other and with the random forest;
+  both train in about 15 s for 5 folds, support early stopping on a group-aware split, and
+  the random forest is seven times slower and offers no round count to tune). HistGradient-
+  Boosting is the weakest of the three by a small margin (−0.0026 ± 0.0031 vs. XGBoost).
+  The engineered features enter the search as an option.
+- **Dependencies:** XGBoost is installed as `xgboost-cpu` (no NVIDIA libraries, much smaller;
+  matters for the Docker image). LightGBM needs the system OpenMP runtime `libgomp1`, which a
+  fresh WSL install and `python:*-slim` images lack (`apt install libgomp1`). Saving these
+  models with MLflow's default `skops` format may list new trusted types; no model is saved in
+  this step.
+
 **RUL baseline on NASA C-MAPSS FD001 (measured 05.11, `python -m failsense.rul.baseline`,
 `make rul-baseline`, MLflow experiment `failsense-rul`).** Training file only; the official
 test file and `RUL_FD001.txt` have not been read (used once at the end).
@@ -636,7 +737,9 @@ published for synthetic datasets.
   cut-offs are **much earlier** than the validation last readouts (median 83 vs. 169,
   KS = 0.43, §3), so the model is evaluated on older trucks than it was trained on. Open
   point: tested in catch-up step 7 with a fixed, validation-like evaluation set (one late
-  readout per truck); until then the sampling stays as it is (§3).
+  readout per truck); until then the sampling stays as it is (§3). Boosting makes the
+  question sharper: removing `time_step` costs XGBoost 0.0061 PR-AUC in every fold (§6,
+  04.11), so the model does use it.
 - **Data errors in the tails:** a few rows (11 of 117,031 with a histogram bin above 10⁹, one
   of them 4,000 × above the rest) look like sensor or logging errors. They are kept and
   handled by `log1p`, not removed; a documented clipping or removal rule would have to be
@@ -655,6 +758,13 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v1.0 (05.11.2026, tasks of plan day 04.11, SCANIA only):** random forest,
+  HistGradientBoosting, XGBoost and LightGBM added to the comparison table (fixed budget, no
+  early stopping, no class weights): all about 0.131–0.134 PR-AUC vs. 0.110 for the logistic
+  regression, better in 5/5 folds and tied with each other. Re-checks of XGBoost: specifications
+  and `time_step` help (−0.007 / −0.006 without), engineered features +0.010 (4/5 folds, likely),
+  positive class weight hurts and shifts the probabilities. Candidates for step 7: XGBoost and
+  LightGBM (§6).
 - **v0.9 (05.11.2026, tasks of plan day 03.11):** one comparison table (`make compare`) for
   logistic regression, kNN (k 25/101, uniform/distance), Gaussian naive Bayes and decision
   trees (depth 4/8/unlimited) on the same 5 folds: nothing beats the reference (best other:

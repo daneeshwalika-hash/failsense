@@ -1,0 +1,5 @@
+model,family,pr_auc,pr_auc_std,train,gap,mean_proba,seconds,diff_vs_reference,diff_std,folds_won,base_model,diff_vs_base,diff_vs_base_std,folds_won_vs_base
+xgboost__no_specs,boosting,0.12659,0.00411,0.50812,0.38152,0.02657,12.71037,0.01675,0.00298,5,xgboost,-0.00687,0.00413,0
+xgboost__no_time_step,boosting,0.12735,0.00538,0.51909,0.39174,0.02650,15.46146,0.01750,0.00348,5,xgboost,-0.00611,0.00318,0
+xgboost__engineered,boosting,0.14353,0.00800,0.61240,0.46887,0.02604,30.31936,0.03368,0.00494,5,xgboost,0.01007,0.00783,4
+xgboost__pos_weight,boosting,0.12479,0.00792,0.37261,0.24782,0.26183,15.87559,0.01494,0.00962,5,xgboost,-0.00867,0.00807,1
