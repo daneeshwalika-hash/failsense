@@ -5,11 +5,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.model_selection import cross_validate
 
 from failsense.data.split import make_group_folds
 from failsense.models.pipeline import (
     FORBIDDEN_FEATURES,
+    IMBALANCE_STRATEGIES,
     SCALERS,
     assert_no_forbidden_features,
     build_dummy_classifier,
@@ -223,3 +226,121 @@ def test_selector_picks_engineered_columns_and_rejects_forbidden(rows: pd.DataFr
     assert "vehicle_id" not in selected and "in_study_repair" not in selected
     with pytest.raises(ValueError, match="leakage"):
         numeric_feature_selector(eng)  # vehicle_id still inside
+
+
+# --- imbalance strategies (30.10) ---------------------------------------------------
+
+
+def _xy(df: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
+    return df[select_feature_columns(df)], df["repair_within_horizon"].to_numpy(dtype=int)
+
+
+@pytest.mark.parametrize(
+    ("strategy", "class_weight", "step_names"),
+    [
+        ("none", None, ["preprocess", "model"]),
+        ("balanced", "balanced", ["preprocess", "model"]),
+        ("smote", None, ["preprocess", "smote", "model"]),
+    ],
+)
+def test_imbalance_strategy_builds_the_expected_pipeline(
+    strategy: str, class_weight: str | None, step_names: list[str]
+) -> None:
+    pipe = build_logreg_pipeline(42, imbalance=strategy)
+    assert [name for name, _ in pipe.steps] == step_names
+    assert pipe.named_steps["model"].class_weight == class_weight
+    assert isinstance(pipe, ImbPipeline) == (strategy == "smote")
+
+
+def test_unknown_imbalance_strategy_raises() -> None:
+    with pytest.raises(ValueError, match="unknown imbalance strategy"):
+        build_logreg_pipeline(42, imbalance="oversample")
+    assert set(IMBALANCE_STRATEGIES) == {"none", "balanced", "smote"}
+
+
+def test_default_strategy_reproduces_the_old_pipeline(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    default = build_logreg_pipeline(42).fit(x, y)
+    explicit = build_logreg_pipeline(42, imbalance="balanced").fit(x, y)
+    assert [n for n, _ in default.steps] == ["preprocess", "model"]
+    assert default.named_steps["model"].class_weight == "balanced"
+    np.testing.assert_allclose(default.predict_proba(x), explicit.predict_proba(x))
+
+
+def test_smote_pipeline_fits_and_predict_proba_is_not_resampled(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    pipe = build_logreg_pipeline(42, imbalance="smote").fit(x, y)
+    proba = pipe.predict_proba(x.iloc[:7])
+    assert proba.shape == (7, 2)  # 7 rows in, 7 rows out: no resampling at predict time
+
+
+class _SpySMOTE(SMOTE):
+    """SMOTE that records how many rows it receives (class attribute survives clone)."""
+
+    calls: list[int] = []  # noqa: RUF012
+
+    def fit_resample(self, X, y, **params):  # noqa: N803
+        _SpySMOTE.calls.append(len(X))
+        return super().fit_resample(X, y, **params)
+
+
+def test_smote_runs_only_on_the_training_part_of_each_fold(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    folds = make_group_folds(rows, n_splits=3, seed=42)
+    pipe = build_logreg_pipeline(42, imbalance="smote")
+    pipe.steps[1] = ("smote", _SpySMOTE(random_state=42))
+    _SpySMOTE.calls.clear()
+    cross_validate(pipe, x, y, cv=folds, scoring="average_precision", n_jobs=1)
+    # One resampling per fold, on exactly the training rows; scoring the
+    # validation part (predict_proba) never triggers it.
+    assert _SpySMOTE.calls == [len(train) for train, _ in folds]
+
+
+def test_smote_balances_only_the_training_data(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    sampler = SMOTE(random_state=42)
+    x_res, y_res = sampler.fit_resample(
+        build_logreg_pipeline(42).named_steps["preprocess"].fit_transform(x, y), y
+    )
+    assert len(y_res) > len(y)
+    assert y_res.mean() == 0.5  # 50:50 after SMOTE; the original y is untouched
+    assert y.mean() == 0.25
+
+
+@pytest.mark.parametrize("strategy", ["none", "balanced", "smote"])
+@pytest.mark.parametrize("leak", ["vehicle_id", "repair_within_horizon"])
+def test_forbidden_column_stops_fit_for_every_strategy(
+    rows: pd.DataFrame, strategy: str, leak: str
+) -> None:
+    x = rows[[*select_feature_columns(rows), leak]]
+    y = rows["repair_within_horizon"].to_numpy(dtype=int)
+    with pytest.raises(ValueError, match="leakage"):
+        build_logreg_pipeline(42, imbalance=strategy).fit(x, y)
+
+
+# --- missing values ----------------------------------------------------------------
+def test_nan_at_predict_time_is_imputed(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    pipe = build_logreg_pipeline(42).fit(x.fillna(0.0), y)  # no NaN while fitting
+    x_new = x.iloc[:5].copy()
+    x_new[:] = np.nan  # every value missing at prediction time
+    proba = pipe.predict_proba(x_new)
+    assert proba.shape == (5, 2) and np.isfinite(proba).all()
+
+
+def test_all_nan_column_in_training_is_dropped_not_an_error(rows: pd.DataFrame) -> None:
+    """SimpleImputer cannot compute a median of nothing and drops the column.
+
+    The pipeline keeps working (fit and predict use the same reduced width), but
+    the model silently has one feature less. We keep this sklearn default on
+    purpose: zero-filling (keep_empty_features=True) would feed constant noise.
+    """
+    x, y = _xy(rows)
+    x = x.copy()
+    x["666_0"] = np.nan
+    pipe = build_logreg_pipeline(42).fit(x, y)
+    n_in = x.shape[1]
+    assert pipe.named_steps["preprocess"].transform(x).shape[1] == n_in - 1
+    x_new = x.iloc[:4].copy()
+    x_new["666_0"] = 1.0  # values appear at predict time: ignored, no crash
+    assert pipe.predict_proba(x_new).shape == (4, 2)

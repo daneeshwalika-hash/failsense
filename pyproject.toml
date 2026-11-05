@@ -5,6 +5,7 @@ description = "End-to-end predictive maintenance system: failure prediction, RUL
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "imbalanced-learn>=0.14.2",
     "matplotlib>=3.11.2",
     "mlflow>=3",
     "pandas>=3.1.0",

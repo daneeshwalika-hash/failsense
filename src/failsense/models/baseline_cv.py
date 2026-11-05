@@ -45,12 +45,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import make_scorer
 from sklearn.model_selection import cross_validate
 
 from failsense.config import load_config, resolve_path
@@ -83,8 +85,28 @@ logger = logging.getLogger(__name__)
 
 SCORING = {"pr_auc": "average_precision", "roc_auc": "roc_auc"}
 
+# Mean predicted probability of class 1. PR-AUC only looks at the ranking, so
+# class_weight / SMOTE can shift all probabilities upwards without changing it;
+# this metric makes the shift visible (it matters for the threshold and
+# calibration on 06.11). Kept apart from SCORING: compare_cutoffs uses SCORING.
+# With response_method="predict_proba" sklearn passes the class-1 column.
+SCORING_WITH_PROBA = {
+    **SCORING,
+    "mean_proba": make_scorer(
+        lambda y_true, proba: float(np.mean(proba)), response_method="predict_proba"
+    ),
+}
+
 # Labels attached to every run of this script (filterable in the MLflow UI).
 RUN_TAGS = {"task": "q1_binary", "dataset": "scania_train", "stage": "baseline"}
+
+# Imbalance strategy per model name for the MLflow param; every model not listed
+# uses class_weight="balanced" (the default of build_logreg_pipeline).
+IMBALANCE_OF_MODEL = {
+    "dummy_prior": "n/a",
+    "logreg_specs_none": "none",
+    "logreg_specs_smote": "smote",
+}
 
 # (candidate, reference) pairs compared fold by fold on the primary metric.
 # 1) Do the specifications help?  2) Which scaler, with everything else equal?
@@ -92,6 +114,9 @@ COMPARISONS: tuple[tuple[str, str], ...] = (
     ("logreg_specs_standard", "logreg_balanced"),
     ("logreg_specs_minmax", "logreg_specs_standard"),
     # 30.10: engineered features, and the selection effect of time_step.
+    # 30.10: imbalance handling (logreg_specs_standard = class_weight "balanced").
+    ("logreg_specs_standard", "logreg_specs_none"),
+    ("logreg_specs_smote", "logreg_specs_standard"),
     ("logreg_specs_eng", "logreg_specs_standard"),
     ("logreg_specs_no_ts", "logreg_specs_standard"),
     ("logreg_specs_eng_no_ts", "logreg_specs_eng"),
@@ -284,6 +309,11 @@ def run(
             build_logreg_pipeline(**spec_kwargs, scaler="minmax"),
             raw_features,
         ),
+        "logreg_specs_none": (build_logreg_pipeline(**spec_kwargs, imbalance="none"), raw_features),
+        "logreg_specs_smote": (
+            build_logreg_pipeline(**spec_kwargs, imbalance="smote"),
+            raw_features,
+        ),
         "logreg_specs_eng": (build_logreg_pipeline(**spec_kwargs), all_features),
         "logreg_specs_no_ts": (build_logreg_pipeline(**spec_kwargs), raw_no_ts),
         "logreg_specs_eng_no_ts": (build_logreg_pipeline(**spec_kwargs), all_no_ts),
@@ -295,12 +325,25 @@ def run(
         x = frame[numeric + categorical]
         # return_train_score=True: also score each fold's *training* part.
         # Costs extra time, but train vs. validation is today's key diagnostic.
+        started = time.perf_counter()
         result = cross_validate(
-            model, x, y, cv=folds, scoring=SCORING, n_jobs=-1, return_train_score=True
+            model,
+            x,
+            y,
+            cv=folds,
+            scoring=SCORING_WITH_PROBA,
+            n_jobs=-1,
+            return_train_score=True,
         )
         summary[name] = {}
         fold_scores[name] = result["test_pr_auc"]
-        for metric in SCORING:
+        logger.info(
+            "%-24s runtime: %.0f s wall clock (folds in parallel), %.0f s fit time summed",
+            name,
+            time.perf_counter() - started,
+            result["fit_time"].sum(),
+        )
+        for metric in SCORING_WITH_PROBA:
             val = result[f"test_{metric}"]  # "test" here = the validation fold
             train = result[f"train_{metric}"]
             summary[name][metric] = float(val.mean())
@@ -319,12 +362,13 @@ def run(
             log_cv_run(
                 run_name=f"{name}_k{n_cutoffs_label(n_per_vehicle)}",
                 cv_result=result,
-                metrics=SCORING,
+                metrics=SCORING_WITH_PROBA,
                 params={
                     **common_params,
                     "model": name,
                     "model_repr": repr(model),
                     "n_numeric_features": len(numeric),
+                    "imbalance_strategy": IMBALANCE_OF_MODEL.get(name, "balanced"),
                     "engineered": any(c in engineered for c in numeric),
                     "uses_time_step": TIME_COL in numeric,
                 },

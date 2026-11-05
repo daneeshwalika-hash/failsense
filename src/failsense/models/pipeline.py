@@ -29,8 +29,9 @@ What is in this module
     Validation/test contain categories that never occur in training; "ignore"
     encodes them as all zeros instead of crashing at prediction time.
 
-* ``build_logreg_pipeline``: preprocessor -> logistic regression with
-  ``class_weight="balanced"`` (about 2 % positives).
+* ``build_logreg_pipeline``: preprocessor -> logistic regression. The
+  imbalance strategy (about 2.8 % positives) is chosen by parameter:
+  ``"none"``, ``"balanced"`` (default) or ``"smote"``.
 * ``build_dummy_classifier``: the reference point. With ``strategy="prior"``
   it predicts the same probability for every truck, so its PR-AUC equals the
   share of positives. A real model must beat this number.
@@ -44,6 +45,8 @@ import logging
 from collections.abc import Callable, Iterable, Sequence
 
 import pandas as pd
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.base import TransformerMixin
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.dummy import DummyClassifier
@@ -73,6 +76,15 @@ SCALERS: dict[str, Callable[[], TransformerMixin]] = {
     "standard": StandardScaler,
     "minmax": MinMaxScaler,
 }
+
+
+# Ways to handle the rare positive class (about 2.8 % of the rows):
+# * none:     no correction; the model is rewarded for predicting "no repair".
+# * balanced: class_weight="balanced" - errors on positives weigh ~35x more.
+#             No new rows; only the loss changes.
+# * smote:    synthetic positives are interpolated between real positives so
+#             the training part becomes 50:50 (see build_logreg_pipeline).
+IMBALANCE_STRATEGIES: tuple[str, ...] = ("none", "balanced", "smote")
 
 
 def assert_no_forbidden_features(columns: Iterable[str]) -> None:
@@ -183,28 +195,60 @@ def build_logreg_pipeline(
     random_state: int,
     categorical_columns: Sequence[str] = (),
     scaler: str = "standard",
+    imbalance: str = "balanced",
 ) -> Pipeline:
-    """Preprocessor -> logistic regression, as one estimator.
+    """Preprocessor (-> SMOTE) -> logistic regression, as one estimator.
 
-    With the defaults (no categorical columns, standard scaler) this is the
-    same model as on 27./28.10, so earlier results stay reproducible.
+    With the defaults (no categorical columns, standard scaler, ``"balanced"``)
+    this is the same model as on 27./28.10, so earlier results stay reproducible.
 
-    * ``class_weight="balanced"``: errors on the rare positive class weigh
-      more, otherwise the model may just predict "no repair" for everyone.
-    * ``max_iter=1000``: the default (100) often stops before converging on
-      unscaled or many features; a ConvergenceWarning would be a red flag.
+    Args:
+        random_state: Seed of the model (and of SMOTE).
+        categorical_columns: Text columns to one-hot encode (the specs).
+        scaler: Key of ``SCALERS``.
+        imbalance: One of ``IMBALANCE_STRATEGIES``.
+
+    * ``"none"``: ``class_weight=None``.
+    * ``"balanced"``: ``class_weight="balanced"``. Errors on the rare positive
+      class weigh more, otherwise the model may just predict "no repair".
+    * ``"smote"``: ``preprocess -> SMOTE -> LogisticRegression(class_weight=None)``.
+      SMOTE creates synthetic positives on the line between a real positive and
+      one of its 5 nearest positive neighbours, up to a 50:50 ratio.
+      It must run **after** imputation and scaling (it computes distances, and
+      cannot handle NaN or text) and **only on the training part of a fold**:
+      the imblearn ``Pipeline`` applies the sampler in ``fit`` and skips it in
+      ``predict`` / ``predict_proba``, so validation rows are never resampled.
+      SMOTE *before* cross validation is leakage: synthetic points would be
+      interpolated from validation positives and land in the training part, so
+      the model would "know" its validation rows. The one-hot spec columns get
+      fractional values (e.g. 0.4) in synthetic rows - a known limit of plain
+      SMOTE (``SMOTENC`` would handle categories).
+
+    ``max_iter=1000``: the default (100) often stops before converging on
+    unscaled or many features; a ConvergenceWarning would be a red flag.
+
+    Raises:
+        ValueError: If ``imbalance`` is not in ``IMBALANCE_STRATEGIES``.
     """
-    return Pipeline(
-        steps=[
-            ("preprocess", build_preprocessor(categorical_columns, scaler)),
-            (
-                "model",
-                LogisticRegression(
-                    class_weight="balanced", max_iter=1000, random_state=random_state
-                ),
-            ),
-        ]
+    if imbalance not in IMBALANCE_STRATEGIES:
+        raise ValueError(
+            f"unknown imbalance strategy {imbalance!r}, choose one of {list(IMBALANCE_STRATEGIES)}"
+        )
+    preprocess = build_preprocessor(categorical_columns, scaler)
+    model = LogisticRegression(
+        class_weight="balanced" if imbalance == "balanced" else None,
+        max_iter=1000,
+        random_state=random_state,
     )
+    if imbalance == "smote":
+        return ImbPipeline(
+            steps=[
+                ("preprocess", preprocess),
+                ("smote", SMOTE(random_state=random_state)),
+                ("model", model),
+            ]
+        )
+    return Pipeline(steps=[("preprocess", preprocess), ("model", model)])
 
 
 def build_dummy_classifier() -> DummyClassifier:
