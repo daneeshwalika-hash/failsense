@@ -1,0 +1,4 @@
+sample,n,mean,q05,q25,q50,q75,q95,q99,ks_vs_validation
+train cut-offs (k=5),117031,102.5,8.8,44,83.2,144.2,260.4,326.9,0.4254
+"train, all labelled readouts",919315,124.9,11.2,55.4,108,182.8,288.2,351.2,0.3179
+"validation, last readout per truck",5046,191.1,78.2,116.4,169.4,263.1,347.4,409.2,0

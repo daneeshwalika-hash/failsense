@@ -43,7 +43,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterable, Sequence
+from functools import partial
 
+import numpy as np
 import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -53,7 +55,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
+from sklearn.preprocessing import FunctionTransformer, MinMaxScaler, OneHotEncoder, StandardScaler
 
 from failsense.data.labels import LABEL_COLUMNS, VEHICLE_COL
 from failsense.data.schema import SPEC_COLUMNS
@@ -141,8 +143,28 @@ def numeric_feature_selector(x: pd.DataFrame) -> list[str]:
     return columns
 
 
+def _numeric_excluding(x: pd.DataFrame, exclude: frozenset[str]) -> list[str]:
+    """Numeric columns of ``x`` (forbidden ones refused) without ``exclude``."""
+    return [c for c in numeric_feature_selector(x) if c not in exclude]
+
+
+def _log1p_nonnegative(values: np.ndarray) -> np.ndarray:
+    """``log(1 + x)`` for non-negative values; raises on negative ones.
+
+    The raw counters and histogram counts are >= 0 by the data contract. For
+    x < -1 ``log1p`` would silently return NaN, so a contract violation stops
+    the pipeline instead of becoming a missing value. NaN stays NaN.
+    """
+    arr = np.asarray(values, dtype=float)
+    if (arr < 0).any():
+        raise ValueError("log1p needs non-negative values, found negative ones")
+    return np.log1p(arr)
+
+
 def build_preprocessor(
-    categorical_columns: Sequence[str] = (), scaler: str = "standard"
+    categorical_columns: Sequence[str] = (),
+    scaler: str = "standard",
+    log1p_columns: Sequence[str] = (),
 ) -> ColumnTransformer:
     """Route numeric and categorical columns to their own preprocessing.
 
@@ -150,6 +172,13 @@ def build_preprocessor(
         categorical_columns: Text columns to one-hot encode (the specs).
             Empty = numeric features only (the setup of 27./28.10).
         scaler: Key of ``SCALERS`` (``"standard"`` or ``"minmax"``).
+        log1p_columns: Non-negative numeric columns that get ``log1p`` between
+            imputation and scaling (the cumulative counters and histogram
+            counts are extremely right-skewed: a few old trucks have values
+            far above the rest, which dominate a scaler's mean and variance).
+            ``log1p`` keeps the order of the rows and every row, it only
+            compresses the large values - no clipping, no removal, and no
+            threshold learned from data, so it cannot leak. Empty = off.
 
     Numeric columns are picked by dtype (``numeric_feature_selector``), so the
     caller only passes the feature matrix; the spec columns are text and are
@@ -166,10 +195,12 @@ def build_preprocessor(
     ``remainder="drop"``: any column not named here never reaches the model.
 
     Raises:
-        ValueError: If ``scaler`` is not a key of ``SCALERS``.
+        ValueError: If ``scaler`` is not a key of ``SCALERS``, or
+            ``log1p_columns`` contains a forbidden column.
     """
     if scaler not in SCALERS:
         raise ValueError(f"unknown scaler {scaler!r}, choose one of {sorted(SCALERS)}")
+    assert_no_forbidden_features(log1p_columns)
 
     numeric = Pipeline(
         steps=[
@@ -177,9 +208,20 @@ def build_preprocessor(
             ("scale", SCALERS[scaler]()),
         ]
     )
+    # The log columns get their own branch; the generic branch takes every
+    # other numeric column, so no column is processed twice.
     transformers: list[tuple[str, object, object]] = [
-        ("num", numeric, numeric_feature_selector),
+        ("num", numeric, partial(_numeric_excluding, exclude=frozenset(log1p_columns))),
     ]
+    if log1p_columns:
+        logged = Pipeline(
+            steps=[
+                ("impute", SimpleImputer(strategy="median")),
+                ("log1p", FunctionTransformer(_log1p_nonnegative, feature_names_out="one-to-one")),
+                ("scale", SCALERS[scaler]()),
+            ]
+        )
+        transformers.append(("num_log1p", logged, list(log1p_columns)))
     if categorical_columns:
         transformers.append(
             (
@@ -196,6 +238,7 @@ def build_logreg_pipeline(
     categorical_columns: Sequence[str] = (),
     scaler: str = "standard",
     imbalance: str = "balanced",
+    log1p_columns: Sequence[str] = (),
 ) -> Pipeline:
     """Preprocessor (-> SMOTE) -> logistic regression, as one estimator.
 
@@ -207,6 +250,8 @@ def build_logreg_pipeline(
         categorical_columns: Text columns to one-hot encode (the specs).
         scaler: Key of ``SCALERS``.
         imbalance: One of ``IMBALANCE_STRATEGIES``.
+        log1p_columns: Columns that get ``log1p`` before the scaler (see
+            ``build_preprocessor``). Empty = off.
 
     * ``"none"``: ``class_weight=None``.
     * ``"balanced"``: ``class_weight="balanced"``. Errors on the rare positive
@@ -234,7 +279,7 @@ def build_logreg_pipeline(
         raise ValueError(
             f"unknown imbalance strategy {imbalance!r}, choose one of {list(IMBALANCE_STRATEGIES)}"
         )
-    preprocess = build_preprocessor(categorical_columns, scaler)
+    preprocess = build_preprocessor(categorical_columns, scaler, log1p_columns)
     model = LogisticRegression(
         class_weight="balanced" if imbalance == "balanced" else None,
         max_iter=1000,
