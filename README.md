@@ -15,9 +15,9 @@ End-to-end predictive maintenance system on real truck fleet data: predicts comp
   sudo apt install libgomp1
   ```
 
-  Without it `import lightgbm` fails with `OSError: libgomp.so.1: cannot open shared object file`,
-  and with it every test that imports the model comparison, `make test` and the pre-commit
-  pytest hook. A fresh WSL Ubuntu does not have it; GitHub's `ubuntu-latest` runner does.
+  Without it `import lightgbm` fails with `OSError: libgomp.so.1: cannot open shared object file`.
+  That breaks the model-comparison tests, `make test` and the pre-commit pytest hook. A fresh
+  WSL Ubuntu does not have the package; GitHub's `ubuntu-latest` runner already does.
 
 ## Quickstart
 
