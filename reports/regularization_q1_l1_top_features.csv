@@ -1,0 +1,21 @@
+feature,mean_coef,mean_abs_coef,folds_nonzero,n_folds,kind,model
+num_log1p__397_19,2.60364,2.60364,5,5,"numeric, log1p + scaled",l1_C0.1
+cat__Spec_6_Cat7,-2.25475,2.25475,5,5,"one-hot, NOT scaled",l1_C0.1
+num_log1p__835_0,2.13797,2.13797,5,5,"numeric, log1p + scaled",l1_C0.1
+cat__Spec_6_Cat11,1.42437,1.42437,4,5,"one-hot, NOT scaled",l1_C0.1
+num_log1p__397_13,-1.27476,1.27476,5,5,"numeric, log1p + scaled",l1_C0.1
+cat__Spec_2_Cat14,1.26684,1.26684,5,5,"one-hot, NOT scaled",l1_C0.1
+num_log1p__459_9,1.21899,1.21899,5,5,"numeric, log1p + scaled",l1_C0.1
+cat__Spec_6_Cat6,1.17612,1.17612,4,5,"one-hot, NOT scaled",l1_C0.1
+cat__Spec_2_Cat16,1.17087,1.17087,4,5,"one-hot, NOT scaled",l1_C0.1
+num_log1p__397_9,-1.05227,1.05227,5,5,"numeric, log1p + scaled",l1_C0.1
+num_log1p__272_3,-0.86465,0.86465,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+num_log1p__167_1,-0.76684,0.76684,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+num_log1p__100_0,0.62890,0.62890,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+cat__Spec_7_Cat2,-0.61574,0.61574,5,5,"one-hot, NOT scaled",l1_C0.1_engineered
+num_log1p__397_12,0.61287,0.61287,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+num_log1p__397_10,0.55146,0.55146,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+num_log1p__397_3,0.54562,0.54562,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+num__397_19__share,0.54021,0.54021,5,5,"numeric, scaled",l1_C0.1_engineered
+num_log1p__397_9,-0.53329,0.53329,5,5,"numeric, log1p + scaled",l1_C0.1_engineered
+cat__Spec_1_Cat14,-0.50883,0.50883,5,5,"one-hot, NOT scaled",l1_C0.1_engineered

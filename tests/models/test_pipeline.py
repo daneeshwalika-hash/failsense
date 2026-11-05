@@ -425,3 +425,145 @@ def test_log1p_pipeline_fits_in_cross_validation(skewed: pd.DataFrame) -> None:
     pipe = build_logreg_pipeline(42, log1p_columns=["171_0"])
     result = cross_validate(pipe, skewed, y, cv=folds, scoring="roc_auc", n_jobs=2)
     assert len(result["test_score"]) == 3
+
+
+# --- regularization: penalty, C, l1_ratio (02.11) -------------------------------------
+@pytest.fixture
+def wide() -> tuple[pd.DataFrame, np.ndarray]:
+    """200 rows, 20 numeric columns; only the first two carry signal."""
+    rng = np.random.default_rng(7)
+    x = pd.DataFrame(rng.normal(size=(200, 20)), columns=[f"f{i}" for i in range(20)])
+    logit = 1.5 * x["f0"] - 1.0 * x["f1"]
+    y = (logit + rng.normal(scale=0.5, size=200) > 0).astype(int).to_numpy()
+    return x, y
+
+
+@pytest.mark.parametrize(
+    ("penalty", "c_value", "l1_ratio", "expected_ratio", "solver"),
+    [
+        ("l2", 1.0, None, 0.0, "lbfgs"),
+        ("l2", 0.01, None, 0.0, "lbfgs"),
+        ("l1", 0.1, None, 1.0, "saga"),
+        ("elasticnet", 0.5, 0.3, 0.3, "saga"),
+    ],
+)
+def test_penalty_builds_the_expected_estimator(
+    penalty: str, c_value: float, l1_ratio: float | None, expected_ratio: float, solver: str
+) -> None:
+    model = build_logreg_pipeline(42, penalty=penalty, C=c_value, l1_ratio=l1_ratio).named_steps[
+        "model"
+    ]
+    assert c_value == model.C
+    assert model.l1_ratio == expected_ratio
+    assert model.solver == solver
+    assert model.class_weight == "balanced"  # the imbalance choice is independent
+    assert model.penalty == "deprecated"  # the deprecated argument is never passed
+
+
+def test_default_penalty_reproduces_the_old_pipeline(rows: pd.DataFrame) -> None:
+    x, y = _xy(rows)
+    default = build_logreg_pipeline(42)
+    model = default.named_steps["model"]
+    assert (model.C, model.l1_ratio, model.solver) == (1.0, 0.0, "lbfgs")
+    explicit = build_logreg_pipeline(42, penalty="l2", C=1.0)
+    np.testing.assert_allclose(
+        default.fit(x, y).predict_proba(x), explicit.fit(x, y).predict_proba(x)
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"penalty": "ridge"},
+        {"penalty": "l2", "C": 0.0},
+        {"penalty": "l2", "C": -1.0},
+        {"penalty": "elasticnet"},  # needs l1_ratio
+        {"penalty": "elasticnet", "l1_ratio": 0.0},
+        {"penalty": "elasticnet", "l1_ratio": 1.0},
+        {"penalty": "l1", "l1_ratio": 0.5},  # would be ignored silently
+        {"penalty": "l2", "l1_ratio": 0.5},
+    ],
+)
+def test_invalid_penalty_settings_raise(kwargs: dict) -> None:
+    with pytest.raises(ValueError):
+        build_logreg_pipeline(42, **kwargs)
+
+
+def test_small_c_with_l1_gives_fewer_nonzero_coefficients(wide) -> None:
+    from failsense.models.pipeline import count_nonzero_coefficients
+
+    x, y = wide
+    strong = build_logreg_pipeline(42, penalty="l1", C=0.01).fit(x, y)
+    weak = build_logreg_pipeline(42, penalty="l1", C=10.0).fit(x, y)
+    l2 = build_logreg_pipeline(42, penalty="l2", C=0.01).fit(x, y)
+    n_strong, total = count_nonzero_coefficients(strong)
+    n_weak, _ = count_nonzero_coefficients(weak)
+    n_l2, _ = count_nonzero_coefficients(l2)
+    assert total == 20
+    assert n_strong < n_weak <= total
+    assert n_l2 == total  # ridge shrinks but never reaches exactly 0
+    assert n_strong < n_l2
+
+
+def test_elasticnet_sits_between_l1_and_l2(wide) -> None:
+    from failsense.models.pipeline import count_nonzero_coefficients
+
+    x, y = wide
+    counts = {
+        name: count_nonzero_coefficients(
+            build_logreg_pipeline(42, penalty=pen, C=0.05, l1_ratio=ratio).fit(x, y)
+        )[0]
+        for name, pen, ratio in (("l1", "l1", None), ("en", "elasticnet", 0.5), ("l2", "l2", None))
+    }
+    assert counts["l1"] <= counts["en"] <= counts["l2"] == 20
+
+
+@pytest.mark.parametrize(("penalty", "l1_ratio"), [("l1", None), ("elasticnet", 0.5), ("l2", None)])
+def test_penalized_models_converge_without_warning(wide, penalty: str, l1_ratio) -> None:
+    import warnings
+
+    from sklearn.exceptions import ConvergenceWarning
+
+    x, y = wide
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        build_logreg_pipeline(42, penalty=penalty, C=0.1, l1_ratio=l1_ratio).fit(x, y)
+
+
+@pytest.mark.leakage
+@pytest.mark.parametrize(("penalty", "l1_ratio"), [("l1", None), ("elasticnet", 0.5)])
+@pytest.mark.parametrize("leak", ["vehicle_id", "repair_within_horizon"])
+def test_forbidden_column_stops_fit_for_l1_and_elasticnet(
+    rows: pd.DataFrame, penalty: str, l1_ratio, leak: str
+) -> None:
+    x = rows[[*select_feature_columns(rows), leak]]
+    y = rows["repair_within_horizon"].to_numpy(dtype=int)
+    with pytest.raises(ValueError, match="leakage"):
+        build_logreg_pipeline(42, penalty=penalty, l1_ratio=l1_ratio).fit(x, y)
+
+
+def test_coefficient_table_names_and_kinds(mixed: pd.DataFrame) -> None:
+    from failsense.models.pipeline import coefficient_table, count_nonzero_coefficients
+
+    x = model_input(mixed)
+    y = mixed["repair_within_horizon"].to_numpy(dtype=int)
+    pipe = build_logreg_pipeline(
+        42, categorical_columns=["Spec_0", "Spec_1"], log1p_columns=["time_step"]
+    ).fit(x.assign(time_step=x["time_step"].abs()), y)
+    table = coefficient_table(pipe)
+    kinds = dict(zip(table["feature"], table["kind"], strict=True))
+    assert kinds["num_log1p__time_step"] == "numeric, log1p + scaled"
+    assert kinds["num__171_0"] == "numeric, scaled"
+    assert {k for f, k in kinds.items() if f.startswith("cat__")} == {"one-hot, NOT scaled"}
+    assert len(table) == pipe.named_steps["model"].coef_.size
+    # hand-made zeros are counted
+    pipe.named_steps["model"].coef_[0, :2] = 0.0
+    n_nonzero, total = count_nonzero_coefficients(pipe)
+    assert n_nonzero == total - 2
+
+
+def test_coefficient_table_needs_a_fitted_model() -> None:
+    from failsense.models.pipeline import coefficient_table
+
+    with pytest.raises(ValueError, match="fitted"):
+        coefficient_table(build_logreg_pipeline(42))
