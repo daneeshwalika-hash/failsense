@@ -68,8 +68,13 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 - `log1p` is the only change so far that wins in every fold (+0.0086 ± 0.0053, 5/5 folds).
   Engineered features (counter rates, histogram shares), SMOTE, and the specifications gave
   no real gain for the linear model.
-- The training cut-offs sit much earlier in a truck's life than the readouts in validation
-  (median `time_step` 83 vs. 169, KS = 0.43). This may cost score and is tested next.
+- **The scores above come from a random-row cross validation and are too optimistic.** On a
+  validation-like evaluation set (same `time_step` distribution and positive rate as the
+  official validation) XGBoost scores about **0.05–0.09** PR-AUC and the logistic regression
+  0.04–0.08, with the same ranking (`docs/problem_framing.md` §6, "Evaluation protocol"). The
+  official validation histories are longer than a uniform cut of training histories would give
+  (82 % vs. about 51 %), so the `time_step` shift is a property of the data. From here on,
+  models are scored on the validation-like set; the official validation is the real check.
 - Not done yet: cost-based threshold, calibration, and every other question (Q2–Q5). No target
   for the total cost is set before the baselines are calibrated.
 

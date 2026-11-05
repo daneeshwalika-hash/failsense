@@ -52,7 +52,8 @@ from failsense.data.labels import BINARY_COL
 from failsense.data.sampling import sampling_params_from_config
 from failsense.features.build import engineered_columns
 from failsense.models.baseline_cv import load_training_frame, n_cutoffs_label
-from failsense.models.learning_curve import (
+from failsense.models.pipeline import assert_no_forbidden_features, select_feature_columns
+from failsense.plotting import (
     COLOR_TRAIN,
     COLOR_VAL,
     GRID,
@@ -61,7 +62,6 @@ from failsense.models.learning_curve import (
     INK_SECONDARY,
     SURFACE,
 )
-from failsense.models.pipeline import assert_no_forbidden_features, select_feature_columns
 
 logger = logging.getLogger(__name__)
 

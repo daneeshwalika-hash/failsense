@@ -1,0 +1,3 @@
+model,old_cv_mean,old_cv_std,validation_like_mean,validation_like_std
+xgboost,0.13346,0.00799,0.05299,0.00451
+logreg,0.10985,0.00547,0.04438,0.00306

@@ -1,0 +1,14 @@
+name,value
+overall_n,23549
+overall_positives,635
+overall_rate,0.02696505159454754
+overall_official_rate,0.026952041220768927
+overall_ratio_to_official,1.0004827231329918
+overall_far_from_official,False
+official_ci_low,0.022830801195390434
+official_ci_high,0.03179301116339722
+eval_set_trucks,0.09647968066584568
+training_trucks,0.09647968066584568
+training_rows,0.09706829814322701
+all_trucks_with_tte,0.09647558386411889
+positive_rate_in_repaired_trucks_eval,0.2794894366197183
