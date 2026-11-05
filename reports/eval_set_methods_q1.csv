@@ -1,0 +1,4 @@
+method,n,ks_vs_validation,positive_rate,official_rate,ratio_to_official,far_from_official,median_time_step,repaired_trucks_positive,calibration_end_near_share,calibration_rate,calibration_early_cut_trucks
+calibrated,23550,0.00781,0.02696,0.02695,1.00044,False,170.00000,0.27949,0.33072,0.02696,1506.00000
+literal,23550,0.31030,0.02607,0.02695,0.96735,False,108.30000,0.27025,,,
+rank,23549,0.01226,0.09606,0.02695,3.56392,True,170.40000,0.99560,,,

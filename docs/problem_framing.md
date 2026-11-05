@@ -1,6 +1,11 @@
 # Problem Framing — FailSense
 
-> Status: **v1.0 (05.11.2026, plan day 04.11 caught up)**. Tree ensembles clearly beat the
+> Status: **v1.1 (05.11.2026, evaluation protocol fixed before tuning)**. The old CV scores were
+> too optimistic: with a validation-like evaluation set XGBoost drops from 0.1335 to 0.053
+> (calibrated) or 0.090 (literal procedure), the logistic regression from 0.110 to 0.044 /
+> 0.078; the family ranking is unchanged. The validation `time_step` shift is a property of the
+> data (the official validation histories are longer), not of the cutting procedure (§6, §8).
+> v1.0 (05.11.2026, plan day 04.11 caught up). Tree ensembles clearly beat the
 > linear reference: random forest, histogram boosting, XGBoost and LightGBM all reach about
 > 0.131–0.134 PR-AUC against 0.110 (better in 5 / 5 folds), with the engineered features worth
 > about +0.010 more on top. The candidates for tuning are XGBoost and LightGBM (§6).
@@ -195,6 +200,10 @@ for a cut-off are built only from readouts up to that cut-off (§4, rule 3).
   evaluation set per fold that imitates validation** (one late readout per truck), so the
   validation rows stay the same while the training sample (e.g. cut-offs drawn from the
   validation `time_step` distribution, or restricted to `time_step >= ~70`) is varied (§7).
+  **Update (v1.1): done, and the explanation is different from the two reasons suggested
+  above.** The official validation histories are simply *longer* than a uniform cut of
+  training-length histories would give (§6, "Evaluation protocol"): the shift is a property of
+  the data, not of the cutting procedure.
 - Several cut-offs of one truck are safe because all of them stay in the same CV fold
   (`groups = vehicle_id`).
 
@@ -634,6 +643,130 @@ unchanged XGBoost; positive = better):
   models with MLflow's default `skops` format may list new trusted types; no model is saved in
   this step.
 
+**Evaluation protocol: the validation-like evaluation set (05.11, `compare_cutoffs --eval
+validation-like`, `failsense.models.eval_set`).** Why the old CV evaluation had to be
+replaced, how the replacement was found, and what it changes.
+
+*What the dataset documentation says* (Kharazian et al. 2025, *Scientific Data* 12, 493, and
+the IDA 2024 challenge document that ships with the data; quotes verbatim): vehicles are split
+at random 70 / 15 / 15 into train / validation / test; "the last readout for the validation set
+is selected randomly among all readouts for each vehicle"; the challenge document: "the readout
+data for validation and test have been selected such that, at random, a readout for a vehicle
+has been selected as the last readout". Labels are the windows "(48 to 24), (24 to 12), (12 to
+6), and (6 to 0) time_step before the failure"; validation has 4,910 vehicles in class 0 and
+136 in classes 1–4 (**2.70 %**), test 4,903 and 142 (2.81 %). **Not stated:** whether "random"
+is uniform, how censored vehicles are labelled, and why the histories have the length they
+have (the challenge document warns that "repair frequencies and readout frequencies may have
+been modified").
+
+*Why matching only the `time_step` distribution failed.* The first attempt paired the sorted
+trucks with the sorted validation `time_step` values (rank matching). It reproduced the
+distribution (KS 0.012) but sent every repaired truck to its own end: positive rate **9.61 %,
+3.6 × the official 2.70 %**, and 99.6 % of the repaired trucks scored as positives. In the
+training data `time_step` and the distance to the end of the study are tied together per
+truck. The scratch analysis behind the final protocol (KS against the official last-readout
+`time_step`, positive rate, median distance to the study end of the evaluation row):
+
+| Method | KS | Positive rate | Median distance to end, repaired / censored |
+|---|---|---|---|
+| A. rank matching of the `time_step` marginal | **0.012** | **9.61 %** | 2.2 / 51.6 |
+| B. rank matching with noise on the reach (σ = 1.0) | 0.170 | 6.21 % | 18.8 / 61.0 |
+| D. density-ratio weighted pick per truck | 0.226 | 5.46 % | 41.6 / 80.6 |
+| literal: one uniform random readout per truck | 0.310 | 2.61 % | — |
+| C. random target ≤ reach | 0.367 | 3.54 % | 67.8 / 100.6 |
+| old evaluation: uniform random readout, known labels | 0.428 | 2.80 % | 87.0 / 122.8 |
+| **calibrated rank matching (final)** | **0.008** | **2.70 %** | — |
+| official validation | 0 | 2.70 % | not observable |
+
+With `time_step` alone no label-free method reaches both properties. Imitating the stated
+procedure literally reproduces the positive rate (2.61 % here, 2.72 % with another seed;
+official 2.70 % and 2.81 %) but not the distribution.
+
+*The reason: the official validation histories are longer.* The paper's own counts give
+196,227 / 5,046 = **38.9 readouts per validation vehicle** (test: 198,140 / 5,045 = 39.3)
+against 1,122,452 / 23,550 = **47.7** for a complete training history. The validation vehicles
+therefore keep **82 % of a mean training history**; a uniform random cut of training-length
+histories keeps only about **51 %** (simulated: 24.2 readouts). The official last readouts match
+the *end* of training histories (KS 0.012 against the training trucks' last known-label
+readout) while only about 28 % of the repaired validation trucks (136 of an expected ~490, if their repair share is the training 9.65 %) lie within 48 steps of their repair.
+**The `time_step` shift between training cut-offs and validation (median 83 vs. 169, §3) is a
+property of the data, not of the cutting procedure.**
+
+*The final protocol: calibrated rank matching.* Per training truck one row with a known (or,
+for censored near-end readouts, class-0, as in the official labels) label, chosen so that the
+evaluation set imitates **both** observable properties of the validation split: (1) the
+`time_step` distribution of the official validation last readouts (rank matching of the trucks'
+reach to the sorted targets) and (2) the positive rate (2.70 %): a random share of the repaired
+trucks, found by bisection (33 %), may end near their repair; the others may only be evaluated
+more than 48 steps before it. **Used from the official validation: the `time_step` of its readouts
+and one aggregate number of its labels (136 / 5,046 = 2.70 %); no per-row labels; the test set
+is untouched.** The set is fixed (seeded, depends on no model or fold), on the same truck-to-fold
+assignment as `make cv` (23,549 trucks; one truck with only censored near-end readouts has no
+training row and is dropped). Result: **KS 0.008, positive rate 2.70 % (635 of 23,549)**,
+median `time_step` 170 (official 169). Figure: `reports/figures/eval_set_time_step_*.png`.
+Caveat: the repaired-truck share varies with `time_step` in this set (Q1 16.2 %, Q2 9.5 %, Q3
+9.9 %, Q4 3.0 %): late rows come mostly from censored trucks; the official relation is not
+observable.
+
+*Results: XGBoost (step-6 settings), training samplings on the fixed evaluation set (5 folds,
+same truck-to-fold assignment). Paired differences are against `k5`.*
+
+| Training sampling | Rows | Positive rate | KS of train `time_step` vs. validation | Calibrated: PR-AUC | vs. k5 | Literal: PR-AUC | vs. k5 |
+|---|---|---|---|---|---|---|---|
+| k5 (current) | 117,031 | 2.76 % | 0.425 | 0.0530 ± 0.0045 | — | 0.0901 ± 0.0161 | — |
+| k10 | 227,866 | 2.82 % | 0.417 | 0.0508 ± 0.0053 | −0.0022 ± 0.0029 (2/5) | 0.0842 ± 0.0111 | −0.0059 ± 0.0077 (1/5) |
+| k all | 919,315 | 2.80 % | 0.318 | 0.0442 ± 0.0060 | −0.0088 ± 0.0039 (0/5) | 0.0791 ± 0.0112 | −0.0110 ± 0.0139 (0/5) |
+| `time_step` ≥ 70 | 107,756 | 4.72 % | 0.258 | 0.0580 ± 0.0077 | +0.0050 ± 0.0063 (4/5) | 0.0866 ± 0.0105 | −0.0034 ± 0.0085 (2/5) |
+| matched to validation | 70,909 | **7.84 %** | 0.046 | 0.0737 ± 0.0129 | **+0.0207 ± 0.0138 (5/5)** | 0.0912 ± 0.0102 | **+0.0012 ± 0.0097 (4/5)** |
+
+*Re-checks for the `matched` sampling (paired against `matched`):*
+
+| Variant | Calibrated | Literal |
+|---|---|---|
+| without `time_step` | 0.0674 ± 0.0076; −0.0062 ± 0.0063 (0/5) | 0.0860 ± 0.0137; −0.0052 ± 0.0048 (1/5) |
+| with engineered features | 0.0819 ± 0.0105; **+0.0082 ± 0.0120 (4/5)** | 0.1018 ± 0.0090; **+0.0106 ± 0.0075 (5/5)** |
+
+*Old CV evaluation vs. validation-like evaluation (k5 training, same models):*
+
+| Model | Old CV | Calibrated | Literal |
+|---|---|---|---|
+| XGBoost | 0.1335 ± 0.0080 | **0.0530 ± 0.0045** | 0.0901 ± 0.0161 |
+| logistic regression (reference) | 0.1098 ± 0.0055 | 0.0444 ± 0.0031 | 0.0781 ± 0.0076 |
+
+**Are the conclusions the same on both sets?**
+- **Level and ranking: the old scores were too optimistic by a factor of 1.4–2.5, the ranking is
+  unchanged.** XGBoost stays ahead of the logistic regression on both sets, but by +0.0086
+  (calibrated) and +0.0120 (literal) instead of +0.0237. The calibrated set is the harder one
+  (late rows, hard negatives from trucks that fail much later); the mean predicted probability of
+  XGBoost on it is 0.055 against a rate of 0.027 (late rows have large counters), a first
+  hint for the calibration on 06.11.
+- **More uniform rows do not help** (`k10`, `k all` are worse or equal on both sets; `k all` is
+  worse in 0/5 folds on both, −0.0088 and −0.0110). Same conclusion.
+- **`matched` is the pick of the pre-set rule on both sets, but the evidence is not the same.**
+  On the calibrated set it is clearly better (+0.0207, 5/5 folds); on the literal set it is
+  indistinguishable from `k5` (+0.0012 ± 0.0097). `time_step` ≥ 70 helps on one (+0.0050)
+  and not on the other (−0.0034). **Caution:** the `matched` training sample is built by the
+  same rank matching as the calibrated evaluation set and has a positive rate of 7.84 % (75.7 %
+  of the rows of repaired trucks are positives, against 28.5 % in `k5`), so part of its gain may
+  come from the shared construction and not from a real advantage on the official validation.
+  The literal set, which shares no mechanism with it, shows no gain. **Not a result to build
+  on yet.**
+- **`time_step` helps on both sets** (−0.0062 and −0.0052 without it; 0/5 and 1/5 folds), about
+  one standard deviation each: the same direction and size as in the old CV (−0.0061). It stays
+  in.
+- **The engineered features help on both sets** (+0.0082 and +0.0106) and in the old CV
+  (+0.0101): the same direction in three independent evaluations, 4/5, 5/5 and 4/5 folds. The
+  best-supported result of this comparison; no single evaluation proves it (each difference is
+  0.7–1.4 standard deviations of the fold differences), the agreement does.
+
+**Decisions.** (1) The validation-like evaluation (`calibrated`, with `literal` as second
+reference) is the evaluation protocol from step 7b on; old CV numbers are kept for continuity.
+(2) Training sampling for step 7b: keep **`k5`** as default (cheap, no shared construction with
+the evaluation); carry `matched` as a candidate that is checked once on the official validation
+on 06.11. (3) Keep `time_step`. (4) Carry the engineered features into the hyperparameter
+search as an option (default on). (5) The official validation split on 06.11 is used for
+threshold and calibration and is the real check of this protocol.
+
 **RUL baseline on NASA C-MAPSS FD001 (measured 05.11, `python -m failsense.rul.baseline`,
 `make rul-baseline`, MLflow experiment `failsense-rul`).** Training file only; the official
 test file and `RUL_FD001.txt` have not been read (used once at the end).
@@ -701,6 +834,13 @@ published for synthetic datasets.
 - Model selection: `StratifiedGroupKFold(5)` by `vehicle_id` on the sampled training rows,
   built once by `make_group_folds`; `n_splits` and the seed come from `configs/config.yaml`
   (`cv`), so every model uses exactly the same folds.
+- **From step 7b on, models are scored on the validation-like evaluation set** (§6,
+  "Evaluation protocol"): one row per truck, fixed and seeded, with the `time_step`
+  distribution **and** the positive rate of the official validation (`calibrated`), on the
+  same truck-to-fold assignment as `make cv`; paired comparisons on those rows. The literal
+  procedure (`literal`) is run as a second reference for every important decision, and the old
+  CV number is reported for continuity. **The official validation split (06.11) is the real
+  check.**
 - Threshold choice and calibration: on the validation set.
 - **The test set is used exactly once**, for the final reported result.
 - All models use the same folds and the same metrics; every run is logged in MLflow
@@ -729,17 +869,25 @@ published for synthetic datasets.
   but not its physical meaning; the LLM report must not invent one.
 - **Censoring:** trucks without a repair give only partial information; their last 48 time
   steps are excluded from training.
-- **Selection effect and distribution shift (checked 05.11).** In the EDA, censored trucks are
-  observed for at least 121 time units, repaired trucks from 73.4. Together with the excluded
-  censored readouts near the end, `time_step` might separate the groups for reasons of study
-  design rather than wear. For logistic regression, removing `time_step` changes nothing
-  (+0.0002 ± 0.0003), so there is no sign of a shortcut there. Separately, the training
-  cut-offs are **much earlier** than the validation last readouts (median 83 vs. 169,
-  KS = 0.43, §3), so the model is evaluated on older trucks than it was trained on. Open
-  point: tested in catch-up step 7 with a fixed, validation-like evaluation set (one late
-  readout per truck); until then the sampling stays as it is (§3). Boosting makes the
-  question sharper: removing `time_step` costs XGBoost 0.0061 PR-AUC in every fold (§6,
-  04.11), so the model does use it.
+- **`time_step` shift between training and validation (explained 05.11, v1.1).** The training
+  cut-offs are much earlier than the validation last readouts (median 83 vs. 169, KS = 0.43,
+  §3). It is **not** caused by the cutting procedure: the official validation histories are
+  *longer*, they keep 82 % of a mean training history (38.9 of 47.7 readouts per vehicle, from
+  the paper's counts), while a uniform cut of training-length histories keeps about 51 %
+  (§6, "Evaluation protocol"). The model is therefore evaluated on older trucks with larger
+  cumulative counters than it is trained on (covariate shift), which no sampling of the
+  training trucks removes completely, because in the training data `time_step` is tied to the
+  distance to the end of the study. Consequences: the validation-like evaluation set imitates
+  the observable properties of the validation split (`time_step` distribution and positive
+  rate, using one aggregate label rate; test untouched) but cannot reproduce every property;
+  the `matched` training sample is not trusted on the calibrated set alone (shared
+  construction); the official validation (06.11) is the real check. Removing `time_step` costs
+  XGBoost 0.006 PR-AUC on every evaluation, so the model does use it; whether that is wear
+  information or the study design is not decidable from these data.
+- **The validation-like evaluation set is a model of the validation split, not the split.**
+  Its repaired-truck share changes with `time_step` (16 % early, 3 % late), which cannot be
+  checked against the official split, and it counts censored near-end readouts as class 0, as the
+  official labels do (they may be pre-failure readouts).
 - **Data errors in the tails:** a few rows (11 of 117,031 with a histogram bin above 10⁹, one
   of them 4,000 × above the rest) look like sensor or logging errors. They are kept and
   handled by `log1p`, not removed; a documented clipping or removal rule would have to be
@@ -758,6 +906,16 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v1.1 (05.11.2026, step 7a, evaluation protocol):** the old CV evaluation was too optimistic
+  (XGBoost 0.1335 → 0.053 calibrated / 0.090 literal; logistic regression 0.110 → 0.044 / 0.078,
+  ranking unchanged). A rank matching of the `time_step` marginal failed the positive-rate check
+  (9.61 % vs. 2.70 %); the scratch comparison A–D and the literal procedure are documented as the
+  reason for the final protocol, calibrated rank matching (KS 0.008, positive rate 2.70 %; uses the
+  validation readouts' `time_step` and one aggregate label rate, test untouched). Found in the
+  paper's own counts: the validation histories are longer (82 % vs. about 51 % expected from a
+  uniform cut), so the `time_step` shift is a property of the data. Training samplings, `time_step`
+  and engineered re-checks on both sets (§6); `matched` not trusted yet (shared construction,
+  7.84 % positives); decisions for step 7b.
 - **v1.0 (05.11.2026, tasks of plan day 04.11, SCANIA only):** random forest,
   HistGradientBoosting, XGBoost and LightGBM added to the comparison table (fixed budget, no
   early stopping, no class weights): all about 0.131–0.134 PR-AUC vs. 0.110 for the logistic

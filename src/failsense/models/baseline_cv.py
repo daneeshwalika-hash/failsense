@@ -151,6 +151,38 @@ def read_table(path: Path, columns: Sequence[str] | None = None) -> pd.DataFrame
     return pd.read_csv(path, usecols=None if columns is None else list(columns))
 
 
+def frame_from_sampled(
+    readouts: pd.DataFrame,
+    sampled: pd.DataFrame,
+    counter_cols: Sequence[str] = (),
+    hist_groups: Mapping[str, Sequence[str]] | None = None,
+    top_fraction: float = 0.2,
+) -> pd.DataFrame:
+    """The readout rows at already chosen cut-offs, with engineered features and the Q1 label.
+
+    Args:
+        readouts: The full readouts of the split.
+        sampled: A subset of the rows of ``build_labels(readouts, ...)`` (it must
+            share the index of ``readouts`` and carry the binary label), e.g. the
+            output of ``sample_cutoffs`` or of the evaluation-set matching.
+        counter_cols, hist_groups, top_fraction: Engineered features, see
+            ``build_training_frame``.
+
+    Only the binary label is attached; the other label columns stay in the
+    label table and never come near the features.
+    """
+    frame = readouts.loc[sampled.index].copy()
+    if counter_cols:
+        key_and_counters = readouts[[VEHICLE_COL, TIME_COL, *counter_cols]]
+        with_deltas = add_counter_deltas(key_and_counters, counter_cols)
+        new_cols = [c for c in with_deltas.columns if c not in key_and_counters.columns]
+        frame = frame.join(with_deltas.loc[sampled.index, new_cols])
+    if hist_groups:
+        frame = add_histogram_features(frame, hist_groups, top_fraction)
+    frame[BINARY_COL] = sampled[BINARY_COL].astype(int)
+    return frame
+
+
 def build_training_frame(
     readouts: pd.DataFrame,
     tte: pd.DataFrame,
@@ -179,16 +211,7 @@ def build_training_frame(
     """
     labels = build_labels(readouts, tte, class_bounds)
     sampled = sample_cutoffs(labels, n_per_vehicle=n_per_vehicle, seed=seed)
-    frame = readouts.loc[sampled.index].copy()
-    if counter_cols:
-        key_and_counters = readouts[[VEHICLE_COL, TIME_COL, *counter_cols]]
-        with_deltas = add_counter_deltas(key_and_counters, counter_cols)
-        new_cols = [c for c in with_deltas.columns if c not in key_and_counters.columns]
-        frame = frame.join(with_deltas.loc[sampled.index, new_cols])
-    if hist_groups:
-        frame = add_histogram_features(frame, hist_groups, top_fraction)
-    frame[BINARY_COL] = sampled[BINARY_COL].astype(int)
-    return frame
+    return frame_from_sampled(readouts, sampled, counter_cols, hist_groups, top_fraction)
 
 
 def load_training_frame(config: Mapping[str, Any], n_per_vehicle: int | None) -> pd.DataFrame:

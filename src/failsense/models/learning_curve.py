@@ -65,6 +65,15 @@ from failsense.models.baseline_cv import (
 )
 from failsense.models.compare_cutoffs import assign_vehicle_folds, build_fixed_eval_folds
 from failsense.models.pipeline import build_logreg_pipeline, select_feature_columns
+from failsense.plotting import (
+    COLOR_TRAIN,
+    COLOR_VAL,
+    GRID,
+    INK_MUTED,
+    INK_PRIMARY,
+    INK_SECONDARY,
+    SURFACE,
+)
 from failsense.tracking import setup_mlflow
 
 logger = logging.getLogger(__name__)
@@ -76,16 +85,6 @@ FIGURE_NAME = "learning_curve_q1_logreg.png"
 TABLE_NAME = "learning_curve_q1_logreg.csv"
 
 RUN_TAGS = {"task": "q1_binary", "dataset": "scania_train", "stage": "learning_curve"}
-
-# Colors: validated categorical slots 1/2 (blue/orange; CVD-safe pair) and
-# neutral ink for text, grid and the dummy reference line.
-COLOR_TRAIN = "#2a78d6"
-COLOR_VAL = "#eb6834"
-INK_PRIMARY = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRID = "#e1e0d9"
-SURFACE = "#fcfcfb"
 
 
 def compute_learning_curve(

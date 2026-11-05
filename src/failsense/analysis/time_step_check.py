@@ -48,7 +48,7 @@ from failsense.data.labels import (
 )
 from failsense.data.sampling import sample_cutoffs, sampling_params_from_config
 from failsense.models.baseline_cv import n_cutoffs_label, read_table, table_path
-from failsense.models.learning_curve import (
+from failsense.plotting import (
     COLOR_TRAIN,
     COLOR_VAL,
     GRID,
