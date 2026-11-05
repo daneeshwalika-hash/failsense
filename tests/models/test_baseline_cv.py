@@ -96,3 +96,25 @@ def test_training_frame_histogram_features(readouts, tte) -> None:
     )
     assert (frame["h_1__share"] == 0.75).all()
     assert (frame["h__mean_bin"] == 0.75).all()
+
+
+def test_mean_proba_scorer_reports_the_average_probability() -> None:
+    import numpy as np
+
+    from failsense.models.baseline_cv import SCORING, SCORING_WITH_PROBA
+    from failsense.models.pipeline import build_dummy_classifier
+
+    x = pd.DataFrame({"a": range(10)})
+    y = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    dummy = build_dummy_classifier().fit(x, y)
+    # The prior classifier predicts the share of positives (0.1) for every row.
+    assert SCORING_WITH_PROBA["mean_proba"](dummy, x, y) == pytest.approx(0.1)
+    assert set(SCORING) < set(SCORING_WITH_PROBA)  # compare_cutoffs' SCORING is unchanged
+
+
+def test_imbalance_param_names_exist_in_comparisons() -> None:
+    from failsense.models.baseline_cv import COMPARISONS, IMBALANCE_OF_MODEL
+    from failsense.models.pipeline import IMBALANCE_STRATEGIES
+
+    assert {"logreg_specs_none", "logreg_specs_smote"} <= {n for pair in COMPARISONS for n in pair}
+    assert set(IMBALANCE_OF_MODEL.values()) <= {*IMBALANCE_STRATEGIES, "n/a"}
