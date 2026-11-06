@@ -1,0 +1,59 @@
+{
+  "question": "matched vs k5 training sample on the official validation (one-time check)",
+  "rule": "switch only if matched is better in BOTH PR-AUC and cross-fitted cost by more than the std of the paired bootstrap difference; otherwise keep k5",
+  "n_trucks": 5046,
+  "n_positives": 136,
+  "n_bootstrap": 500,
+  "k5": {
+    "n_rows": 117031,
+    "pr_auc": 0.06532898103788999,
+    "pr_auc_95ci": [
+      0.04763416017328763,
+      0.102323457776933
+    ],
+    "cost_cross_fitted": 28220.0,
+    "fold_costs": [
+      5999.0,
+      6178.0,
+      5625.0,
+      6063.0,
+      4355.0
+    ]
+  },
+  "matched": {
+    "n_rows": 70909,
+    "positive_rate": 0.07835394660762386,
+    "n_trucks": 23549,
+    "pr_auc": 0.09134673476729441,
+    "pr_auc_95ci": [
+      0.06843953818338962,
+      0.12792550214082177
+    ],
+    "cost_cross_fitted": 26055.0,
+    "fold_costs": [
+      4937.0,
+      6504.0,
+      4826.0,
+      4916.0,
+      4872.0
+    ]
+  },
+  "always_alert_cost": 34370.0,
+  "pr_auc_diff_matched_minus_k5": {
+    "point": 0.026017753729404416,
+    "diff_std": 0.011407020724801613,
+    "diff_ci_low": 0.004400809609722433,
+    "diff_ci_high": 0.047748084806565796,
+    "share_a_better": 0.988
+  },
+  "cost_saving_matched_vs_k5": {
+    "point": 2165.0,
+    "diff_std": 3285.4089093974126,
+    "diff_ci_low": -3010.5,
+    "diff_ci_high": 9503.775,
+    "share_a_cheaper": 0.794
+  },
+  "decision": "k5",
+  "reason": "keep k5: PR-AUC +0.0260 vs. spread 0.0114 (ok); cost saving +2,165 vs. spread 3,285 (not enough)",
+  "timing_seconds": 299.95671355300055
+}
