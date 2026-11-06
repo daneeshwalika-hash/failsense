@@ -199,3 +199,45 @@ def make_cmapss_frame() -> Callable[..., pd.DataFrame]:
 def write_cmapss_file() -> Callable[[pd.DataFrame, Path], Path]:
     """The ``write_cmapss_txt`` function as a fixture."""
     return write_cmapss_txt
+
+
+TINY_INPUT_COLUMNS = [
+    "time_step", "171_0", "171_0__delta", "171_0__rate",
+    "167_0", "167_1", "167__mean_bin", "Spec_0",
+]  # fmt: skip
+
+
+def tiny_explain_frame(n: int = 600, seed: int = 0) -> tuple[pd.DataFrame, np.ndarray]:
+    """Small frame with the naming of the real inputs; the label depends on a delta and a spec."""
+    rng = np.random.default_rng(seed)
+    frame = pd.DataFrame(
+        {
+            "time_step": rng.uniform(10, 200, n),
+            "171_0": rng.uniform(0, 100, n),
+            "171_0__delta": rng.normal(0, 1, n),
+            "171_0__rate": rng.normal(0, 1, n),
+            "167_0": rng.uniform(0, 50, n),
+            "167_1": rng.uniform(0, 50, n),
+            "167__mean_bin": rng.uniform(0, 9, n),
+            "Spec_0": rng.choice(["A", "B", "C"], n),
+        }
+    )
+    logit = 2.0 * frame["171_0__delta"] + 1.5 * (frame["Spec_0"] == "A") - 1.0
+    y = (rng.uniform(size=n) < 1 / (1 + np.exp(-logit))).astype(int)
+    return frame, y
+
+
+@pytest.fixture
+def tiny_pipeline() -> tuple[Any, pd.DataFrame, np.ndarray]:
+    """A fitted ``Pipeline(preprocess, XGBoost)`` plus its training frame and labels."""
+    from xgboost import XGBClassifier
+
+    from failsense.models.pipeline import build_model_pipeline
+
+    frame, y = tiny_explain_frame()
+    model = XGBClassifier(
+        n_estimators=30, max_depth=3, learning_rate=0.2, importance_type="gain",
+        n_jobs=1, random_state=0, verbosity=0,
+    )  # fmt: skip
+    pipeline = build_model_pipeline(model, ["Spec_0"], scaler=None).fit(frame, y)
+    return pipeline, frame, y

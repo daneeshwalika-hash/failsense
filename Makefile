@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate rul-baseline analysis class-mix test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate explain rul-baseline analysis class-mix test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -39,6 +39,9 @@ register:  ## Fit the winner on the training split and register it as failsense-
 
 calibrate:  ## Calibrate failsense-q1@candidate and choose the alert threshold by cost on the OFFICIAL validation
 	uv run python -m failsense.models.calibrate
+
+explain:  ## SHAP, permutation and gain importance of failsense-q1@candidate on the official validation (needs make calibrate)
+	uv run python -m failsense.explain.explain_q1
 
 rul-baseline:  ## C-MAPSS FD001 RUL: Dummy / Ridge / Lasso baselines, GroupKFold by engine, MLflow
 	uv run python -m failsense.rul.baseline
