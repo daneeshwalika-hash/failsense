@@ -115,3 +115,15 @@ cost:
     # Sensitivity mapping ("literal"): an alert is exactly "predicted class alert_class",
     # so an alerted truck of class k costs Cost_k_<alert_class> (e.g. 400 for class 4).
     alert_class: 1
+
+calibration:
+  # Step 06.11: probability calibration and the cost-based alert threshold, evaluated on the
+  # OFFICIAL validation split (the test split stays untouched).
+  n_splits: 5              # cross-fitting folds (calibrator on validation, threshold choice)
+  seed: 42
+  primary: sigmoid         # variant used for the headline numbers; fixed BEFORE the run
+  n_bins: 10               # quantile bins of the reliability curve
+  zoom_max: 0.1            # right edge of the low-probability zoom panel
+  top_fraction: 0.05       # baseline "alert the riskiest 5 %"
+  n_bootstrap: 500         # bootstrap resamples (trucks) for the PR-AUC interval
+  log_loss_eps: 1.0e-6     # probabilities are clipped to [eps, 1 - eps] for the log loss

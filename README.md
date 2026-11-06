@@ -79,9 +79,17 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   `candidate`): XGBoost with 125 engineered features, untuned (a hyperparameter search with Optuna
   found nothing clearly better). On the validation-like evaluation set it reaches PR-AUC 0.057 and
   ROC-AUC 0.66; alerting the riskiest 5 % of the trucks finds 15 % of the failures at 8 % precision
-  (about 3 × the base rate). Its probabilities are too high and not calibrated yet.
-- Not done yet: cost-based threshold, calibration, and every other question (Q2–Q5). No target
-  for the total cost is set before the baselines are calibrated.
+  (about 3 × the base rate).
+- **First look at the official validation** (136 of 5,046 trucks positive, test untouched):
+  PR-AUC 0.065 (95 % interval 0.048–0.102), ROC-AUC 0.70. The raw probabilities are about 4 × too
+  high; a sigmoid calibrator fitted without validation labels brings the Brier score to the level of
+  the base rate (0.026) but adds no skill over it. With the SCANIA cost matrix, "alert every truck"
+  costs 34,370 (4,910 × 7); the cross-fitted cost-optimal threshold costs 28,220 (saving 6,150 =
+  1.22 per truck, better in 5/5 folds), alerting only the riskiest 5 % costs 50,231. Under the
+  stricter reading "alert = predicted class 1" the model is no better than never alerting
+  (`make calibrate`, `docs/problem_framing.md` §6).
+- Not done yet: SHAP / feature importance and the other questions (Q2–Q5). No target for the total
+  cost is set.
 
 **Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
 `GroupKFold` by engine, RUL capped at 125 cycles, RMSE in cycles (lower is better); the

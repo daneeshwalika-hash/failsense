@@ -1,6 +1,14 @@
 # Problem Framing — FailSense
 
-> Status: **v1.2 (05.11.2026, hyperparameter search and the candidate model)**. Optuna on
+> Status: **v1.3 (06.11.2026, calibration and cost threshold on the official validation)**.
+> The candidate is scored once on the official validation (136 of 5,046 trucks positive): PR-AUC
+> 0.065 (95 % bootstrap interval 0.048–0.102), ROC-AUC 0.70. A sigmoid calibrator fitted on
+> out-of-fold scores of the validation-like set (no validation labels) cuts the Brier score from
+> 0.038 to 0.026 = the base-rate predictor (0.026): the probabilities are usable but add no skill
+> over the base rate. With the SCANIA costs the best policy is to alert about 59 % of the trucks
+> (cross-fitted cost 28,220 vs. 34,370 for always-alert, saving 6,150 = 1.22 per truck, better in
+> 5/5 folds); alerting only the riskiest 5 % costs 50,231, *more* than always-alert (§6).
+> v1.2 (05.11.2026, hyperparameter search and the candidate model). Optuna on
 > XGBoost and LightGBM found nothing clearly better than the untuned engineered XGBoost
 > (+0.0015 ± 0.0040, 3/5 folds, calibrated set); that model is registered as `failsense-q1`
 > (alias `candidate`). Calibrated set: PR-AUC 0.057, ROC-AUC 0.66, Brier 0.028 (worse than
@@ -935,6 +943,82 @@ on validation) is set on 06.11 after calibration and threshold choice, not befor
 Results on real data are expected to be clearly lower than the near-perfect scores often
 published for synthetic datasets.
 
+### Calibration and cost threshold on the official validation (06.11, `make calibrate`)
+
+First look at the **official validation** split (5,046 trucks, one last readout each, 136 positives =
+2.70 %); the test split is untouched. Model: `failsense-q1@candidate` (v1). Everything is in
+`reports/calibration_q1_summary.json` (tables: `calibration_q1_scores.csv`, `threshold_q1.csv`,
+figures: `calibration_q1_reliability.png`, `threshold_q1_cost_curve.png`), one MLflow run
+`calibrate_threshold_q1`.
+
+**Binary cost mapping** (matrix: `configs/config.yaml` `cost`, copied from Table 1 of the challenge
+description; it was *not* in the config before 06.11). Primary: alert = the weakest alarm,
+predicted class 1. A false alarm costs 7 (`Cost_0_1`), a missed truck of class 1/2/3/4 costs
+200/300/400/500 (`Cost_k_0`), an alert on any truck of class 1–4 costs 0. Sensitivity ("literal"):
+an alerted truck of class k costs `Cost_k_1` (0/200/300/400). Theoretical threshold for a calibrated
+model: `t* = FP / (FP + mean(FN - TP))`; the mean uses the class mix of the **calibrated
+validation-like evaluation set** (training labels only): 607 / 26 / 2 / 0 trucks of class 1/2/3/4,
+so mean FN = 205 and **t\* = 0.033**.
+
+| Variant (probabilities on validation) | Brier | Log loss | Mean prob. | PR-AUC | ROC-AUC |
+|---|---|---|---|---|---|
+| raw model score | 0.0384 | 0.172 | 0.112 | 0.0653 | 0.703 |
+| **sigmoid**, fitted label-free on the evaluation set (primary) | **0.0261** | 0.121 | 0.043 | 0.0653 | 0.703 |
+| isotonic, fitted label-free | 0.0262 | 0.122 | 0.044 | 0.0536 | 0.694 |
+| sigmoid, cross-fitted on validation (reference) | 0.0258 | 0.117 | 0.027 | 0.0676 | 0.701 |
+| isotonic, cross-fitted on validation (reference) | 0.0265 | 0.125 | 0.027 | 0.0533 | 0.685 |
+| base-rate predictor (always 0.027) | 0.0262 | 0.124 | 0.027 | – | – |
+
+- **Ranking:** PR-AUC 0.065 on the validation vs. 0.057 ± 0.006 (calibrated set) and 0.094 ± 0.007
+  (literal set) predicted on 05.11. The point estimate is close to the calibrated estimate, and the
+  protocol is not contradicted; but with 136 positives the 95 % interval (0.048–0.102) also contains
+  the literal estimate, so the validation cannot rank the two protocols by itself.
+- **Calibration transfers only partly.** The raw score is about 4 × too high on validation (mean
+  0.112 vs. 0.027; on the evaluation set 0.053). The label-free sigmoid fixes most of it (mean
+  0.043) and reaches the Brier score of the base rate, but it is still 1.6 × too high (reliability
+  curve above the diagonal, `p < 0.1` zoom). The registered model is fitted on all training trucks,
+  the out-of-fold scores come from fold models with 25 % less data, so the score scales differ a
+  little. Isotonic offers no gain: it creates ties and has a lower PR-AUC (0.054).
+  **Brier skill over the base rate is about zero for every variant**: the model ranks (ROC-AUC 0.70)
+  but its probabilities do not beat "everyone has 2.7 %".
+- **Calibration does not change the cost-optimal decision** when the threshold is chosen on the
+  validation (a monotone map and a threshold search give the same ranking-based cut; raw and sigmoid
+  have identical cross-fitted cost). It matters for the *label-free* theoretical threshold: on raw
+  scores it costs 30,305, on sigmoid scores 28,612.
+
+| Policy (validation, primary mapping) | Alerts | Total cost |
+|---|---|---|
+| never alert | 0 | 57,400 |
+| **always alert (primary baseline)** | 5,046 | **34,370** (4,910 × 7) |
+| alert the riskiest 5 % | 253 | 50,231 |
+| theoretical threshold t\* = 0.033 on sigmoid probabilities | 3,235 | 28,612 |
+| **cross-fitted cost-optimal threshold (sigmoid), reported** | 2,976 | **28,220** |
+| in-sample optimum (optimistic, threshold tuned on the same trucks) | 3,013 | 27,565 |
+
+Saving of the cross-fitted policy vs. always-alert: **6,150 in total = 1.22 per truck**, per fold
++1,230 ± 750 (std of 5 folds: 875, 696, 1,249, 811, 2,519), better in 5/5 folds. The mean saving
+is larger than the fold spread, but the bar is low (one fold carries 41 % of the saving) and the
+saving is 18 % of the always-alert cost.
+
+At the cross-fitted decisions: 2,070 trucks are **not** alerted, 20 of the 136 positives are among
+them (class 1: 2, class 2: 2, class 3: 8, class 4: 8; recall 87.5 / 85.7 / 73.3 / 89.5 %), recall
+85 %, precision 3.9 %, 2,860 false alarms. The class counts of the validation (16 / 14 / 30 / 76)
+are documentation only; no threshold was derived from them.
+
+**Sensitivity (literal mapping, `alert = predicted class 1`).** Always-alert now costs 76,570 and
+never-alert 57,400; the cross-fitted policy costs 57,252, i.e. 148 less than the best trivial policy:
+under this reading the model is practically worthless (an alert on a class-4 truck still costs 400).
+
+**What this means.** (1) The honest benchmark is "alert everybody": at 7 vs. 200–500 per miss, the
+break-even precision is only about 3 %, barely above the 2.7 % base rate. (2) The model buys a real
+but modest saving by *not* alerting the 40 % of trucks with the lowest scores while missing 15 % of
+the positives. (3) The "riskiest 5 %" view used so far is a bad policy under these costs.
+
+Open points: the evaluation set's class mix (95.6 % class 1, 0 % class 4) is very different from
+the validation's (56 % class 4); this makes the label-free t\* (0.033) higher than a
+validation-mix t\* would be (0.016, documentation only) and may make the evaluation-set calibrator
+too pessimistic for imminent failures. The cost matrix reflects the challenge, not a real fleet.
+
 ## 7. Evaluation protocol
 
 - **SCANIA:** official split by truck (train / validation / test). No own random split.
@@ -1013,6 +1097,11 @@ published for synthetic datasets.
 
 ## Change log
 
+- **v1.3 (06.11.2026):** `cost` block in the config (matrix from the challenge PDF, it was
+  not there before); binary cost mapping primary/literal (`cost.py`); validation frame builder
+  (last readout per truck, no future readouts); `calibration.py`, `threshold.py`,
+  `make calibrate`: sigmoid/isotonic calibrators, cross-fitted threshold by cost, baselines,
+  first measurement on the official validation (§6).
 - **v1.2 (05.11.2026, step 7b):** Optuna search (TPE, MedianPruner per fold, early stopping on a
   truck-grouped inner split) for XGBoost (24 of 40 trials, 12-minute cap) and LightGBM (40 trials) on the
   calibrated evaluation set: best 0.0585 / 0.0592, not clearly better than the untuned engineered XGBoost

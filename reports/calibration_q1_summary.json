@@ -1,0 +1,497 @@
+{
+  "model": "models:/failsense-q1@candidate",
+  "model_version": "1",
+  "primary_variant": "sigmoid",
+  "n_trucks": 5046,
+  "n_positives": 136,
+  "validation_class_counts_documentation_only": {
+    "0": 4910,
+    "1": 16,
+    "2": 14,
+    "3": 30,
+    "4": 76
+  },
+  "eval_set": {
+    "n": 23549,
+    "positive_rate": 0.02696505159454754,
+    "class_counts": {
+      "0": 22914.0,
+      "1": 607.0,
+      "2": 26.0,
+      "3": 2.0,
+      "4": 0.0
+    },
+    "class_mix": [
+      0.9559055118110236,
+      0.04094488188976378,
+      0.0031496062992125984,
+      0.0
+    ]
+  },
+  "theoretical_threshold_primary": 0.033061846851872516,
+  "binary_costs_primary": {
+    "fp": 7.0,
+    "fn": [
+      200.0,
+      300.0,
+      400.0,
+      500.0
+    ],
+    "tp": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "ranking": {
+    "pr_auc": 0.06532898103788999,
+    "pr_auc_95ci": [
+      0.04763416017328763,
+      0.102323457776933
+    ],
+    "roc_auc": 0.7025038936144723,
+    "prevalence": 0.026952041220768927,
+    "estimate_0511": {
+      "calibrated": {
+        "pr_auc": 0.05696,
+        "std": 0.00617
+      },
+      "literal": {
+        "pr_auc": 0.0943,
+        "std": 0.00698
+      }
+    }
+  },
+  "scores": [
+    {
+      "variant": "raw",
+      "brier": 0.038355112502639156,
+      "log_loss": 0.17178521471049302,
+      "mean_proba": 0.11184799229948414,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": 0.06532898103788999,
+      "roc_auc": 0.7025038936144723
+    },
+    {
+      "variant": "sigmoid",
+      "brier": 0.026076440771123432,
+      "log_loss": 0.12117467454856325,
+      "mean_proba": 0.04275470703481379,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": 0.06532898103788999,
+      "roc_auc": 0.7025038936144723
+    },
+    {
+      "variant": "isotonic",
+      "brier": 0.026245489441758228,
+      "log_loss": 0.12164711402032233,
+      "mean_proba": 0.04407033525533966,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": 0.053632794838018694,
+      "roc_auc": 0.6936788666586797
+    },
+    {
+      "variant": "sigmoid_cv",
+      "brier": 0.025839224187202664,
+      "log_loss": 0.11724468268528704,
+      "mean_proba": 0.026920210518098123,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": 0.06759880797907872,
+      "roc_auc": 0.7006244758595903
+    },
+    {
+      "variant": "isotonic_cv",
+      "brier": 0.026527804905651365,
+      "log_loss": 0.12495850001311755,
+      "mean_proba": 0.027348090822934434,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": 0.053310555791824976,
+      "roc_auc": 0.6848935246196237
+    },
+    {
+      "variant": "base_rate_eval_set",
+      "brier": 0.02622562886407272,
+      "log_loss": 0.12398202055005385,
+      "mean_proba": 0.02696505159454754,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": null,
+      "roc_auc": null
+    },
+    {
+      "variant": "base_rate_validation",
+      "brier": 0.026225628694802904,
+      "log_loss": 0.12398201732387985,
+      "mean_proba": 0.026952041220768927,
+      "true_rate": 0.026952041220768927,
+      "pr_auc": null,
+      "roc_auc": null
+    }
+  ],
+  "threshold_table": [
+    {
+      "variant": "raw",
+      "cost_never": 57400.0,
+      "cost_always": 34370.0,
+      "cost_top_5%": 50231.0,
+      "cost_theoretical": 30305.0,
+      "cost_cross_fitted": 28220.0,
+      "saving_total": 6150.0,
+      "saving_per_truck": 1.2187871581450653,
+      "saving_fold_mean": 1230.0,
+      "saving_fold_std": 749.7706315934228,
+      "folds_better": 5,
+      "clear": true,
+      "cf_alerted": 2976,
+      "cf_not_alerted": 2070,
+      "cf_recall": 0.8529411764705882,
+      "cost_in_sample_optimistic": 27565.0,
+      "in_sample_threshold": 0.07129441201686859,
+      "is_alerted": 3013,
+      "is_not_alerted": 2033,
+      "is_recall": 0.8676470588235294,
+      "cf_missed_c1": 2,
+      "cf_recall_c1": 0.875,
+      "is_missed_c1": 2,
+      "is_recall_c1": 0.875,
+      "cf_missed_c2": 2,
+      "cf_recall_c2": 0.8571428571428571,
+      "is_missed_c2": 2,
+      "is_recall_c2": 0.8571428571428571,
+      "cf_missed_c3": 8,
+      "cf_recall_c3": 0.7333333333333333,
+      "is_missed_c3": 7,
+      "is_recall_c3": 0.7666666666666667,
+      "cf_missed_c4": 8,
+      "cf_recall_c4": 0.8947368421052632,
+      "is_missed_c4": 7,
+      "is_recall_c4": 0.9078947368421053
+    },
+    {
+      "variant": "sigmoid",
+      "cost_never": 57400.0,
+      "cost_always": 34370.0,
+      "cost_top_5%": 50231.0,
+      "cost_theoretical": 28612.0,
+      "cost_cross_fitted": 28220.0,
+      "saving_total": 6150.0,
+      "saving_per_truck": 1.2187871581450653,
+      "saving_fold_mean": 1230.0,
+      "saving_fold_std": 749.7706315934228,
+      "folds_better": 5,
+      "clear": true,
+      "cf_alerted": 2976,
+      "cf_not_alerted": 2070,
+      "cf_recall": 0.8529411764705882,
+      "cost_in_sample_optimistic": 27565.0,
+      "in_sample_threshold": 0.0353238553943719,
+      "is_alerted": 3013,
+      "is_not_alerted": 2033,
+      "is_recall": 0.8676470588235294,
+      "cf_missed_c1": 2,
+      "cf_recall_c1": 0.875,
+      "is_missed_c1": 2,
+      "is_recall_c1": 0.875,
+      "cf_missed_c2": 2,
+      "cf_recall_c2": 0.8571428571428571,
+      "is_missed_c2": 2,
+      "is_recall_c2": 0.8571428571428571,
+      "cf_missed_c3": 8,
+      "cf_recall_c3": 0.7333333333333333,
+      "is_missed_c3": 7,
+      "is_recall_c3": 0.7666666666666667,
+      "cf_missed_c4": 8,
+      "cf_recall_c4": 0.8947368421052632,
+      "is_missed_c4": 7,
+      "is_recall_c4": 0.9078947368421053
+    },
+    {
+      "variant": "isotonic",
+      "cost_never": 57400.0,
+      "cost_always": 34370.0,
+      "cost_top_5%": 51038.0,
+      "cost_theoretical": 29157.0,
+      "cost_cross_fitted": 29157.0,
+      "saving_total": 5213.0,
+      "saving_per_truck": 1.0330955212049149,
+      "saving_fold_mean": 1042.6,
+      "saving_fold_std": 749.5940901581336,
+      "folds_better": 5,
+      "clear": true,
+      "cf_alerted": 3371,
+      "cf_not_alerted": 1675,
+      "cf_recall": 0.8823529411764706,
+      "cost_in_sample_optimistic": 29157.0,
+      "in_sample_threshold": 0.03409465648497259,
+      "is_alerted": 3371,
+      "is_not_alerted": 1675,
+      "is_recall": 0.8823529411764706,
+      "cf_missed_c1": 2,
+      "cf_recall_c1": 0.875,
+      "is_missed_c1": 2,
+      "is_recall_c1": 0.875,
+      "cf_missed_c2": 2,
+      "cf_recall_c2": 0.8571428571428571,
+      "is_missed_c2": 2,
+      "is_recall_c2": 0.8571428571428571,
+      "cf_missed_c3": 6,
+      "cf_recall_c3": 0.8,
+      "is_missed_c3": 6,
+      "is_recall_c3": 0.8,
+      "cf_missed_c4": 6,
+      "cf_recall_c4": 0.9210526315789473,
+      "is_missed_c4": 6,
+      "is_recall_c4": 0.9210526315789473
+    },
+    {
+      "variant": "sigmoid_cv",
+      "cost_never": 57400.0,
+      "cost_always": 34370.0,
+      "cost_top_5%": 50231.0,
+      "cost_theoretical": 33345.0,
+      "cost_cross_fitted": 29599.0,
+      "saving_total": 4771.0,
+      "saving_per_truck": 0.9455013872374157,
+      "saving_fold_mean": 954.2,
+      "saving_fold_std": 917.1293256678689,
+      "folds_better": 4,
+      "clear": true,
+      "cf_alerted": 2869,
+      "cf_not_alerted": 2177,
+      "cf_recall": 0.8235294117647058,
+      "cost_in_sample_optimistic": 27670.0,
+      "in_sample_threshold": 0.018606265896212393,
+      "is_alerted": 3028,
+      "is_not_alerted": 2018,
+      "is_recall": 0.8676470588235294,
+      "cf_missed_c1": 2,
+      "cf_recall_c1": 0.875,
+      "is_missed_c1": 2,
+      "is_recall_c1": 0.875,
+      "cf_missed_c2": 2,
+      "cf_recall_c2": 0.8571428571428571,
+      "is_missed_c2": 2,
+      "is_recall_c2": 0.8571428571428571,
+      "cf_missed_c3": 7,
+      "cf_recall_c3": 0.7666666666666667,
+      "is_missed_c3": 7,
+      "is_recall_c3": 0.7666666666666667,
+      "cf_missed_c4": 13,
+      "cf_recall_c4": 0.8289473684210527,
+      "is_missed_c4": 7,
+      "is_recall_c4": 0.9078947368421053
+    },
+    {
+      "variant": "isotonic_cv",
+      "cost_never": 57400.0,
+      "cost_always": 34370.0,
+      "cost_top_5%": 51452.0,
+      "cost_theoretical": 34455.0,
+      "cost_cross_fitted": 29444.0,
+      "saving_total": 4926.0,
+      "saving_per_truck": 0.976218787158145,
+      "saving_fold_mean": 985.2,
+      "saving_fold_std": 270.04295954532864,
+      "folds_better": 5,
+      "clear": true,
+      "cf_alerted": 3209,
+      "cf_not_alerted": 1837,
+      "cf_recall": 0.8602941176470589,
+      "cost_in_sample_optimistic": 28213.0,
+      "in_sample_threshold": 0.01748029977232725,
+      "is_alerted": 2975,
+      "is_not_alerted": 2071,
+      "is_recall": 0.8529411764705882,
+      "cf_missed_c1": 2,
+      "cf_recall_c1": 0.875,
+      "is_missed_c1": 2,
+      "is_recall_c1": 0.875,
+      "cf_missed_c2": 2,
+      "cf_recall_c2": 0.8571428571428571,
+      "is_missed_c2": 2,
+      "is_recall_c2": 0.8571428571428571,
+      "cf_missed_c3": 7,
+      "cf_recall_c3": 0.7666666666666667,
+      "is_missed_c3": 8,
+      "is_recall_c3": 0.7333333333333333,
+      "cf_missed_c4": 8,
+      "cf_recall_c4": 0.8947368421052632,
+      "is_missed_c4": 8,
+      "is_recall_c4": 0.8947368421052632
+    }
+  ],
+  "primary_baselines": [
+    {
+      "policy": "never_alert",
+      "n_alerts": 0,
+      "cost": 57400.0
+    },
+    {
+      "policy": "always_alert",
+      "n_alerts": 5046,
+      "cost": 34370.0
+    },
+    {
+      "policy": "top_5%",
+      "n_alerts": 253,
+      "cost": 50231.0
+    },
+    {
+      "policy": "theoretical_threshold",
+      "n_alerts": 3235,
+      "cost": 28612.0
+    }
+  ],
+  "primary_cross_fit_folds": [
+    {
+      "fold": 0,
+      "threshold": 0.035319088300448956,
+      "n": 1009,
+      "n_alerts": 579,
+      "cost": 5999.0,
+      "always_cost": 6874.0,
+      "saving_vs_always": 875.0
+    },
+    {
+      "fold": 1,
+      "threshold": 0.03623305534430495,
+      "n": 1010,
+      "n_alerts": 577,
+      "cost": 6178.0,
+      "always_cost": 6874.0,
+      "saving_vs_always": 696.0
+    },
+    {
+      "fold": 2,
+      "threshold": 0.0358322142785857,
+      "n": 1009,
+      "n_alerts": 598,
+      "cost": 5625.0,
+      "always_cost": 6874.0,
+      "saving_vs_always": 1249.0
+    },
+    {
+      "fold": 3,
+      "threshold": 0.0353238553943719,
+      "n": 1009,
+      "n_alerts": 631,
+      "cost": 6063.0,
+      "always_cost": 6874.0,
+      "saving_vs_always": 811.0
+    },
+    {
+      "fold": 4,
+      "threshold": 0.0353238553943719,
+      "n": 1009,
+      "n_alerts": 591,
+      "cost": 4355.0,
+      "always_cost": 6874.0,
+      "saving_vs_always": 2519.0
+    }
+  ],
+  "primary_decision_cross_fitted": {
+    "tp": 116,
+    "fp": 2860,
+    "fn": 20,
+    "tn": 2050,
+    "n_alerted": 2976,
+    "n_not_alerted": 2070,
+    "recall": 0.8529411764705882,
+    "precision": 0.038978494623655914,
+    "per_class": {
+      "1": {
+        "n": 16,
+        "alerted": 14,
+        "missed": 2,
+        "recall": 0.875
+      },
+      "2": {
+        "n": 14,
+        "alerted": 12,
+        "missed": 2,
+        "recall": 0.8571428571428571
+      },
+      "3": {
+        "n": 30,
+        "alerted": 22,
+        "missed": 8,
+        "recall": 0.7333333333333333
+      },
+      "4": {
+        "n": 76,
+        "alerted": 68,
+        "missed": 8,
+        "recall": 0.8947368421052632
+      }
+    },
+    "not_alerted_positives": {
+      "1": 2,
+      "2": 2,
+      "3": 8,
+      "4": 8
+    }
+  },
+  "primary_decision_in_sample_optimistic": {
+    "tp": 118,
+    "fp": 2895,
+    "fn": 18,
+    "tn": 2015,
+    "n_alerted": 3013,
+    "n_not_alerted": 2033,
+    "recall": 0.8676470588235294,
+    "precision": 0.039163624294722865,
+    "per_class": {
+      "1": {
+        "n": 16,
+        "alerted": 14,
+        "missed": 2,
+        "recall": 0.875
+      },
+      "2": {
+        "n": 14,
+        "alerted": 12,
+        "missed": 2,
+        "recall": 0.8571428571428571
+      },
+      "3": {
+        "n": 30,
+        "alerted": 23,
+        "missed": 7,
+        "recall": 0.7666666666666667
+      },
+      "4": {
+        "n": 76,
+        "alerted": 69,
+        "missed": 7,
+        "recall": 0.9078947368421053
+      }
+    },
+    "not_alerted_positives": {
+      "1": 2,
+      "2": 2,
+      "3": 7,
+      "4": 7
+    }
+  },
+  "sensitivity_literal": {
+    "variant": "sigmoid",
+    "mapping": "literal (alert = predicted class 1)",
+    "theoretical_threshold": 0.03455245054218974,
+    "never_alert": 57400.0,
+    "always_alert": 76570.0,
+    "cross_fit_cost": 57252.0,
+    "saving_vs_always": 19318.0,
+    "saving_vs_best_trivial": 148.0,
+    "cross_fit_saving": {
+      "total_saving": 19318.0,
+      "saving_per_truck": 3.8283789139912803,
+      "fold_mean": 3863.6,
+      "fold_std": 247.9905240125114,
+      "folds_better": 5,
+      "n_folds": 5,
+      "clear": true
+    }
+  },
+  "verdict": "Primary variant sigmoid: cross-fitted saving vs. always-alert +6,150 in total (+1.219 per truck), per fold +1,230 +- 750 (std over 5 folds), better in 5/5 folds. The saving is larger than the fold spread: the model beats always-alert.",
+  "timing_seconds": 87.04179436699997
+}
