@@ -47,6 +47,9 @@ Dependency notes:
 
 ## Results so far
 
+**Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (status 06.11.2026).
+The sections below are the short version.
+
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
 5-fold cross validation, folds grouped by truck, 5 random cut-offs per truck, PR-AUC
 (average precision). The test split has not been used.
