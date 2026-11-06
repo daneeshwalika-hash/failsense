@@ -1,6 +1,7 @@
 # Problem Framing — FailSense
 
-> Status: **v1.5 (06.11.2026, class-mix check: the calibrated evaluation set's class mix is an
+> Status: **v1.6 (06.11.2026, open point: label shift for Q2, decision on 07.11)**.
+> v1.5 (06.11.2026, class-mix check: the calibrated evaluation set's class mix is an
 > artefact of rank matching; open point, §6, §8)**.
 > v1.4 (06.11.2026, scope: Bosch CNC cut from v1.0, see ADR 0003). Q4 (anomaly
 > detection) is evaluated on SCANIA only; the Bosch CNC part is future work.
@@ -1073,6 +1074,15 @@ Nothing was tuned and no calibration was re-run; `reports/class_mix_check_q1.csv
    the validation, the calibrator on the evaluation set, so the calibrated probabilities of imminent
    trucks may be too low. Open point for the next time the protocol is touched.
 
+**Open point for 07.11: Q2 (classes 0–4) faces label shift.** The training cut-offs (and the calibrated
+evaluation set) are mostly class 1 among the positives, the official validation mostly class 4
+(16 / 14 / 30 / 76; class-mix check above). A multi-class model trained on training cut-offs learns
+the wrong class prior, and the cost matrix punishes exactly the confusion of class 4 with class 0 or 1
+most. Option to decide tomorrow: **prior-shift correction** of the predicted class probabilities
+with the class mix **published in the dataset paper** (aggregate numbers, like 136 / 5,046 before),
+never per-row validation labels. The paper's test class counts exist as well; they are not used.
+Alternatives to weigh against it: no correction (report the shift), or class weights.
+
 ## 7. Evaluation protocol
 
 - **SCANIA:** official split by truck (train / validation / test). No own random split.
@@ -1155,6 +1165,8 @@ Nothing was tuned and no calibration was re-run; `reports/class_mix_check_q1.csv
 
 ## Change log
 
+- **v1.6 (06.11.2026):** open point for 07.11: Q2 faces label shift (training mostly class 1, official
+  validation mostly class 4); option: prior-shift correction with the class mix published in the paper (§6).
 - **v1.5 (06.11.2026):** class-mix check on training data (`analysis/class_mix.py`, `make class-mix`):
   readouts are not denser near the repair; the 607 / 26 / 2 / 0 mix of the calibrated set comes from
   the constant ≈ 44-step offset between training reach and validation `time_step` in rank matching;
