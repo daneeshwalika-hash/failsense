@@ -1,6 +1,8 @@
 # Problem Framing — FailSense
 
-> Status: **v1.4 (06.11.2026, scope: Bosch CNC cut from v1.0, see ADR 0003)**. Q4 (anomaly
+> Status: **v1.5 (06.11.2026, class-mix check: the calibrated evaluation set's class mix is an
+> artefact of rank matching; open point, §6, §8)**.
+> v1.4 (06.11.2026, scope: Bosch CNC cut from v1.0, see ADR 0003). Q4 (anomaly
 > detection) is evaluated on SCANIA only; the Bosch CNC part is future work.
 > v1.3 (06.11.2026, calibration and cost threshold on the official validation).
 > The candidate is scored once on the official validation (136 of 5,046 trucks positive): PR-AUC
@@ -1033,6 +1035,44 @@ the validation's (56 % class 4); this makes the label-free t\* (0.033) higher th
 validation-mix t\* would be (0.016, documentation only) and may make the evaluation-set calibrator
 too pessimistic for imminent failures. The cost matrix reflects the challenge, not a real fleet.
 
+### Class-mix check (06.11, `make class-mix`, training data only)
+
+Why does the calibrated evaluation set have 607 / 26 / 2 / 0 positives in classes 1–4 while the
+official validation has 16 / 14 / 30 / 76 (the paper's numbers, used only as a reference)?
+Nothing was tuned and no calibration was re-run; `reports/class_mix_check_q1.csv`.
+
+| Set (one row per truck) | Positive rate | Class 1 / 2 / 3 / 4 | Share of class 4 |
+|---|---|---|---|
+| official validation (reference) | 2.70 % | 16 / 14 / 30 / 76 | 56 % |
+| literal (one uniform readout per truck, training) | 2.61 % | 281 / 158 / 71 / 104 | 17 % |
+| **calibrated rank matching (our protocol)** | 2.70 % | 607 / 26 / 2 / 0 | 0 % |
+| rank matching of the `time_step` marginal only | 9.61 % | 36 / 73 / 200 / 1,953 | 86 % |
+
+1. **Readouts are not denser near the repair.** Readouts per time unit are 0.229 / 0.227 / 0.235 /
+   0.283 in classes 1–4 (class 4 about 1.2 × denser); the gap to the previous readout is 3.2–4.5 steps
+   at every distance. One uniform readout per repaired truck therefore gives about 48 / 24 / 12 / 15 %
+   of the positives, matching the *rate* (2.6–2.8 %) but not the official *mix*
+   (χ² ≈ 180–205, 3 degrees of freedom).
+2. **The label definition matches the sources**: windows 48–24, 24–12, 12–6, 6–0 before the failure
+   (dataset paper, challenge PDF), upper bound inclusive, `d = length_of_study_time_step − time_step`.
+   A different reference point does not explain it: shifting the failure by 12 steps still gives only
+   32 % class 4 with a rate of 3.4 % (χ² 75); no shift reproduces rate and mix together.
+3. **Calibrated rank matching pairs each truck with the validation `time_step` quantile of its
+   reach rank.** The training reach is 41–46 steps above the target at every quantile (offset
+   45 / 41 / 46 / 42 / 45 at q05 … q95), about the 48-step horizon. Repaired trucks that may be
+   evaluated at their end therefore land at `d ≈ 39–44` (quartiles; median 41.8): class 1 (607 of
+   635), almost never `d ≤ 12` (2 of 635); the other repaired trucks are cut just beyond 48 (class 0).
+4. **So the 607 / 26 / 2 / 0 mix is an artefact of the matching**, not a property of the data.
+   The official mix (78 % of the positives in the two narrowest windows) cannot come from a uniform
+   random readout under this label definition, so the official last-readout selection (or label
+   assignment) differs from the paper's description in a way these training data cannot reveal;
+   it would need the per-row validation labels or the generator.
+5. **Consequences, protocol unchanged:** the calibrated set measures mostly "class 1 early warning",
+   the official validation mostly imminent failures (PR-AUC 0.065 vs. 0.057); the label-free t\*
+   (0.033, mean FN 205) is too high for the official mix (0.016); the deployed threshold was learned on
+   the validation, the calibrator on the evaluation set, so the calibrated probabilities of imminent
+   trucks may be too low. Open point for the next time the protocol is touched.
+
 ## 7. Evaluation protocol
 
 - **SCANIA:** official split by truck (train / validation / test). No own random split.
@@ -1098,6 +1138,8 @@ too pessimistic for imminent failures. The cost matrix reflects the challenge, n
   handled by `log1p`, not removed; a documented clipping or removal rule would have to be
   fitted on training data only.
 - The cost matrix comes from a research challenge, not from a real service department.
+- **Class mix of the evaluation set:** the calibrated set has 95.6 % class 1 and no class 4, the
+  official validation 56 % class 4 (class-mix check, §6, 06.11). Open point, protocol unchanged.
 - One component type in one manufacturer's fleet; results do not transfer automatically to
   other components or vehicles.
 - C-MAPSS is **simulated** data; the RUL part demonstrates the method, not real engine
@@ -1113,6 +1155,10 @@ too pessimistic for imminent failures. The cost matrix reflects the challenge, n
 
 ## Change log
 
+- **v1.5 (06.11.2026):** class-mix check on training data (`analysis/class_mix.py`, `make class-mix`):
+  readouts are not denser near the repair; the 607 / 26 / 2 / 0 mix of the calibrated set comes from
+  the constant ≈ 44-step offset between training reach and validation `time_step` in rank matching;
+  open point (§6, §8).
 - **v1.4 (06.11.2026):** scope decision: the Should item Bosch CNC is cut from v1.0 and moved to
   future work ([ADR 0003](adr/0003-cut-bosch-cnc.md)); Q4 on SCANIA only (§2, §9).
 - **v1.3 (06.11.2026):** `cost` block in the config (matrix from the challenge PDF, it was
