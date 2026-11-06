@@ -1,6 +1,8 @@
 # Problem Framing — FailSense
 
-> Status: **v1.3 (06.11.2026, calibration and cost threshold on the official validation)**.
+> Status: **v1.4 (06.11.2026, scope: Bosch CNC cut from v1.0, see ADR 0003)**. Q4 (anomaly
+> detection) is evaluated on SCANIA only; the Bosch CNC part is future work.
+> v1.3 (06.11.2026, calibration and cost threshold on the official validation).
 > The candidate is scored once on the official validation (136 of 5,046 trucks positive): PR-AUC
 > 0.065 (95 % bootstrap interval 0.048–0.102), ROC-AUC 0.70. A sigmoid calibrator fitted on
 > out-of-fold scores of the validation-like set (no validation labels) cuts the Brier score from
@@ -70,7 +72,7 @@ not too early and not too late — and the technician understands *why* the warn
 | 1 | Will Component X need a repair within the next 48 time steps? | Supervised — binary classification | SCANIA Component X | Must |
 | 2 | How close is the repair (class 0–4)? | Supervised — multi-class classification with a cost matrix | SCANIA Component X | Should |
 | 3 | How many cycles remain until failure (RUL)? | Supervised — regression on time series | NASA C-MAPSS FD001 | Must |
-| 4 | Does a truck behave abnormally, even without failure examples? | Unsupervised — anomaly detection | SCANIA Component X | Must |
+| 4 | Does a truck behave abnormally, even without failure examples? | Unsupervised — anomaly detection | SCANIA Component X (Must); Bosch CNC cross-machine part **moved to future work** ([ADR 0003](adr/0003-cut-bosch-cnc.md)) | Must |
 | 5 | Why did the model raise a warning, and what should the technician do? | Explainable AI (SHAP) + LLM report | Model outputs | Must / Should |
 
 ### Why each task type
@@ -1106,9 +1108,13 @@ too pessimistic for imminent failures. The cost matrix reflects the challenge, n
 - Real-time control of vehicles; the system only warns and explains.
 - Planning or scheduling of workshop orders.
 - Identifying what Component X physically is.
+- Bosch CNC Machining (cross-machine anomaly detection, the former Should item): cut from v1.0 on
+  06.11.2026, future work after the presentation on 20.11 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
 
 ## Change log
 
+- **v1.4 (06.11.2026):** scope decision: the Should item Bosch CNC is cut from v1.0 and moved to
+  future work ([ADR 0003](adr/0003-cut-bosch-cnc.md)); Q4 on SCANIA only (§2, §9).
 - **v1.3 (06.11.2026):** `cost` block in the config (matrix from the challenge PDF, it was
   not there before); binary cost mapping primary/literal (`cost.py`); validation frame builder
   (last readout per truck, no future readouts); `calibration.py`, `threshold.py`,

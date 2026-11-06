@@ -110,6 +110,14 @@ only switches off the 7 constant columns. Details in the docs; this is simulated
 
 Details, decisions and the evaluation protocol: [docs/problem_framing.md](docs/problem_framing.md).
 
+## Future work
+
+- **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on
+  06.11.2026 to protect the Must items; planned only after the presentation on 20.11.2026, with a
+  split by machine (never random), FFT features and the same anomaly-detection setup as for SCANIA.
+  Reasons and the plan to resume: [ADR 0003](docs/adr/0003-cut-bosch-cnc.md). The dataset is not
+  used yet, so it is not listed under Data.
+
 ## Data
 
 | Dataset | Used for | Source | Licence / terms |
