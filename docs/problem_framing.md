@@ -1113,19 +1113,26 @@ performance.
 > them in an unintuitive way. The `interventional` variant with a training background sample is the
 > alternative; it is not used, for runtime reasons. This is why the main comparison is made on **groups**.
 
-| Group (variable) | Columns | Permutation drop of PR-AUC (mean ± std) | Reliable | Mean abs. SHAP of the group | Gain share |
-|---|---|---|---|---|---|
-| 397 (histogram) | 74 | −0.0023 ± 0.0067 | no | **0.630** (rank 1) | 23.5 % |
-| **459 (histogram)** | 42 | **+0.0131 ± 0.0039** | **yes (rank 1)** | 0.514 (rank 2) | 18.2 % |
-| 666 (counter) | 3 | +0.0090 ± 0.0054 | no | 0.211 (rank 3) | 9.1 % |
-| 167 (histogram) | 22 | +0.0076 ± 0.0046 | no | 0.170 (rank 4) | 7.3 % |
-| **291 (histogram)** | 24 | **+0.0077 ± 0.0025** | **yes (rank 2)** | 0.137 (rank 5) | 6.6 % |
-| 158 (histogram) | 22 | +0.0055 ± 0.0040 | no | 0.122 | 8.6 % |
-| `time_step` | 1 | +0.0019 ± 0.0027 | no | 0.057 (rank 11) | 0.4 % |
-| Spec_4 | 1 | +0.0005 ± 0.0001 | yes, but negligible | 0.003 | 0.7 % |
-| Spec_0 | 1 | 0 | no | 0 (never used) | 0 % |
+| Group (variable) | Columns | Permutation drop of PR-AUC (mean ± std) | Reliable | Rise of the log loss (calibrated p; baseline 0.1212) | Mean abs. SHAP of the group | Gain share |
+|---|---|---|---|---|---|---|
+| 397 (histogram) | 74 | −0.0023 ± 0.0067 | no | +0.00132 ± 0.00036 (reliable) | **0.630** (rank 1) | 23.5 % |
+| **459 (histogram)** | 42 | **+0.0131 ± 0.0039** | **yes (rank 1)** | +0.00311 ± 0.00054 (reliable) | 0.514 (rank 2) | 18.2 % |
+| 666 (counter) | 3 | +0.0090 ± 0.0054 | no | +0.00173 ± 0.00052 (reliable) | 0.211 (rank 3) | 9.1 % |
+| 167 (histogram) | 22 | +0.0076 ± 0.0046 | no | +0.00118 ± 0.00034 (reliable) | 0.170 (rank 4) | 7.3 % |
+| **291 (histogram)** | 24 | **+0.0077 ± 0.0025** | **yes (rank 2)** | +0.00072 ± 0.00029 (reliable) | 0.137 (rank 5) | 6.6 % |
+| 158 (histogram) | 22 | +0.0055 ± 0.0040 | no | +0.00160 ± 0.00028 (reliable) | 0.122 | 8.6 % |
+| `time_step` | 1 | +0.0019 ± 0.0027 | no | +0.00058 ± 0.00008 (reliable) | 0.057 (rank 11) | 0.4 % |
+| Spec_4 | 1 | +0.0005 ± 0.0001 | yes, but negligible | +0.00004 ± 0.00001 | 0.003 | 0.7 % |
+| Spec_0 | 1 | 0 | no | 0 | 0 (never used) | 0 % |
 
 (Full table with all 23 groups: `explain_q1_groups.csv`.)
+
+**Does 397 matter for the probability level although not for the ranking?** Yes. Scored by the log loss of
+the calibrated probabilities (same groups, same shuffles), shuffling group 397 raises the log loss by
++0.00132 ± 0.00036, a reliable rise (about 3.7 spreads, rank 4 of 23, behind 459, 666 and 158), while the
+PR-AUC does not fall (−0.0023 ± 0.0067): the 397 columns help set the *level* of the risk, not the order of
+the trucks. The log loss also separates more groups than PR-AUC (14 of 23 are reliable, against 3 for PR-AUC), because it uses
+every truck, not only the few positives.
 
 - **Where grouped permutation and grouped SHAP agree:** the histogram groups **459** and **291**. Both are
   in the top 5 of SHAP, and both are the only groups with a drop clearly above the spread (459: about

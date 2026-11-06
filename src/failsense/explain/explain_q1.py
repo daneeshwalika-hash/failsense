@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 import shap
 from scipy.stats import spearmanr
-from sklearn.metrics import average_precision_score
+from sklearn.metrics import average_precision_score, log_loss
 
 from failsense.config import load_config, resolve_path
 from failsense.data.labels import CLASS_COL, VEHICLE_COL
@@ -84,6 +84,14 @@ def pick_story_rows(
     pool, note = (class4, "class-4 miss") if class4.size else (missed, "no class-4 miss: any class")
     fn = int(pool[np.argmin(p_cal[pool])])
     return tp, fn, note
+
+
+def neg_log_loss(y_true: np.ndarray, p: np.ndarray) -> float:
+    """Negative log loss (higher is better, as ``permutation_importance`` expects).
+
+    Probabilities are clipped to [1e-6, 1 - 1e-6] like in the calibration step.
+    """
+    return -float(log_loss(y_true, np.clip(p, 1e-6, 1 - 1e-6), labels=[0, 1]))
 
 
 def group_shap(by_input: pd.DataFrame, groups: Mapping[str, list[str]]) -> pd.Series:
@@ -189,6 +197,13 @@ def run(config: Mapping[str, Any], track: bool = True) -> dict[str, Any]:
     start = time.perf_counter()
     perm_groups = permutation_importance(predict, x, y, groups, n_rep, seed)
     logger.info("Grouped permutation: %.1f s", time.perf_counter() - start)
+    # same groups and seed (= the same shuffles), scored by the log loss of CALIBRATED probabilities
+    start = time.perf_counter()
+    perm_ll = permutation_importance(
+        lambda f: apply_sigmoid_parameters(calibrator, predict(f)), x, y, groups, n_rep, seed,
+        metric=neg_log_loss,
+    )  # fmt: skip
+    logger.info("Grouped permutation (log loss): %.1f s", time.perf_counter() - start)
     start = time.perf_counter()
     perm_single = permutation_importance(predict, x, y, single, n_rep, seed)
     logger.info("Single-column permutation: %.1f s", time.perf_counter() - start)
@@ -198,6 +213,11 @@ def run(config: Mapping[str, Any], track: bool = True) -> dict[str, Any]:
     shap_by_group = group_shap(by_input, groups)
 
     table = perm_groups.set_index("group")
+    ll = perm_ll.set_index("group")
+    table["ll_baseline"] = -ll["baseline"]  # the log loss itself (lower is better)
+    table["ll_mean_increase"] = ll["mean_drop"]  # rise of the log loss when shuffled
+    table["ll_std"] = ll["std_drop"]
+    table["ll_reliable"] = ll["reliable"]
     table["shap_mean_abs"] = shap_by_group
     table["shap_share"] = table["shap_mean_abs"] / table["shap_mean_abs"].sum()
     table["gain"] = pd.Series({g: float(gain_by_input.reindex(c).sum()) for g, c in groups.items()})

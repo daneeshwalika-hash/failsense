@@ -73,6 +73,29 @@ def test_compare_rankings_ranks_only_reliable_groups() -> None:
     assert out["n_reliable_groups"] == 2 and not math.isnan(out["spearman_all_groups"])
 
 
+def test_neg_log_loss_hand_computed_and_clipped() -> None:
+    assert eq.neg_log_loss(np.array([0, 1]), np.array([0.2, 0.8])) == pytest.approx(np.log(0.8))
+    assert np.isfinite(eq.neg_log_loss(np.array([1, 0]), np.array([0.0, 1.0])))  # clipped
+
+
+def test_log_loss_permutation_drop_is_the_rise_of_the_loss() -> None:
+    from failsense.explain.importance import permutation_importance
+
+    rng = np.random.default_rng(0)
+    x = pd.DataFrame({"s": rng.normal(size=600), "n": rng.normal(size=600)})
+    y = (x["s"] + rng.normal(size=600) > 0).astype(int).to_numpy()
+
+    def predict(f: pd.DataFrame) -> np.ndarray:
+        return 1 / (1 + np.exp(-2 * f["s"].to_numpy()))
+
+    table = permutation_importance(
+        predict, x, y, {"s": ["s"], "n": ["n"]}, 6, 0, metric=eq.neg_log_loss
+    ).set_index("group")
+
+    assert table.loc["s", "mean_drop"] > 0.1 and table.loc["n", "mean_drop"] == 0.0
+    assert -table.loc["s", "baseline"] == pytest.approx(-eq.neg_log_loss(y, predict(x)))
+
+
 def test_clean_makes_values_json_safe() -> None:
     out = eq._clean({"a": np.float64(np.nan), "b": [np.int64(2), np.bool_(True)], 3: float("inf")})
 
