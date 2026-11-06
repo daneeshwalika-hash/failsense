@@ -1190,7 +1190,11 @@ trucks, same trucks and folds for both models); otherwise keep `k5`.
 | PR-AUC (95 % interval) | 0.0653 (0.048–0.102) | **0.0913** (0.068–0.128) | **+0.0260** (95 % interval +0.0044 … +0.0477; better in 98.8 % of the draws) | 0.0114 | above the spread |
 | Cross-fitted cost (primary mapping) | 28,220 | **26,055** | saving **2,165** (95 % interval −3,011 … +9,504; cheaper in 79.4 % of the draws) | 3,285 | **not above the spread** |
 
-**Decision: keep `k5`** (the rule needs both). Honest reading: the ranking of `matched` is better on the
+**Decision: keep `k5`, by the pre-registered rule.** The rule was written into the module docstring and into
+`decide_sampling` **before the run**, and the code applied it unchanged. We keep it because a rule that is
+relaxed after the result is seen is no longer a test: with only 136 positives the cost metric is exactly the
+place where a favourable point estimate (2,165) is easy to over-read. `matched` is therefore **not** adopted
+now and is revisited later (open point), not rejected. Honest reading: the ranking of `matched` is better on the
 official validation, which shares no mechanism with the matching (the interval of the PR-AUC difference
 excludes 0); the cost saving (7.7 %) points the same way but is smaller than its noise: 136 positives and a
 threshold learned on 4/5 of them cannot resolve it. Reasons that also favour `k5` in practice: the deployed
