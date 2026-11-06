@@ -218,17 +218,26 @@ sampling noise of 136 positives comes on top.
 
 ## 7. Sampling finding: the cut-off design matters more than tuning
 
-| Change | Effect on PR-AUC | Where |
+**Like for like, on the same evaluation set (calibrated set, paired per fold):** changing the training
+cut-offs from `k5` to `matched` gains **+0.0207** PR-AUC (5/5 folds), the whole Optuna search only
+**+0.0015 ± 0.0040** (3/5 folds). On the literal set, the second reference, `matched` gains
++0.0012 ± 0.0097 (4/5 folds), so the large effect is not confirmed there.
+
+| Change (same set, paired per fold) | Effect on PR-AUC | Where |
 |---|---|---|
-| Optuna search (24 / 40 trials), tuned vs. untuned | +0.0015 ± 0.0040 (3/5 folds) | calibrated set, `evaluate_q1_paired.csv` |
 | `matched` instead of `k5` training cut-offs | +0.0207 (5/5 folds) | calibrated set, `compare_sampling_q1_calibrated.csv` |
-| `matched` instead of `k5` training cut-offs | +0.0012 ± 0.0097 (4/5) | literal set, `compare_sampling_q1_literal.csv` |
-| **`matched` instead of `k5`, official validation** | **+0.0260** (95 % interval +0.0044 … +0.0477) | `reports/matched_check_q1.json` |
+| Optuna search (24 / 40 trials), tuned vs. untuned | +0.0015 ± 0.0040 (3/5 folds) | calibrated set, `evaluate_q1_paired.csv` |
+| `matched` instead of `k5` training cut-offs | +0.0012 ± 0.0097 (4/5 folds) | literal set, `compare_sampling_q1_literal.csv` |
+
+**Independent confirmation of the ranking only (official validation).** On the official validation, which
+shares no mechanism with the rank matching, `matched` raises the PR-AUC by **+0.0260** (95 % interval
++0.0044 … +0.0477; `reports/matched_check_q1.json`). This confirms the *ranking* effect. The cost side did
+not pass the pre-registered rule (below), so it is not a confirmation of the business result.
 
 `matched` = 5 cut-offs per truck whose `time_step` follows the validation last readouts (rank matching with
 noise; 70,909 rows, 7.8 % positives vs. 117,031 rows, 2.8 % for `k5`). More uniform rows do not help
 (`k10` −0.0022, all readouts −0.0088 on the calibrated set). The choice of *which readouts become training
-examples* moved the score by 0.02–0.03; the whole hyperparameter search by 0.0015.
+examples* moves the score by 0.02–0.03, the whole hyperparameter search by 0.0015.
 
 **Kept `k5`, by a pre-registered rule.** The rule was fixed before the run: switch only if `matched` is
 better in **both** PR-AUC and the cross-fitted cost by more than the std of the paired bootstrap
@@ -258,7 +267,8 @@ The alpha of Ridge and Lasso is a tie. Time-series features and boosting come on
 - **Class mix and label shift (Q2).** The training cut-offs and the calibrated evaluation set are mostly
   class 1 among the positives, the official validation mostly class 4. This (a) makes the evaluation-set
   scores mostly a class-1 measure, (b) makes the label-free t* (0.033) too high for the official mix
-  (about 0.016 with the validation's), and (c) means a multi-class model (Q2) would learn the wrong class
+  (about 0.016 with the validation's mix, computed from the class counts published with the dataset;
+  documentation only, not used for any decision), and (c) means a multi-class model (Q2) would learn the wrong class
   prior. Decision on 07.11: prior-shift correction with the class mix **published in the dataset paper**
   (aggregate numbers, like 136 / 5,046), never per-row validation labels.
 - **Only 136 positive trucks** in the validation: PR-AUC (interval 0.048–0.102), the cost saving and the
