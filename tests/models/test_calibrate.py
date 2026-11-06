@@ -130,3 +130,20 @@ def test_oof_scores_refuses_different_columns() -> None:
 
     with pytest.raises(ValueError, match="differ"):
         calibrate.oof_scores({"tuning": {"seed": 1}}, data, registry)
+
+
+def test_deployment_record_states_the_choice_and_the_mapping_caveat(analysis) -> None:
+    from failsense.models.calibration import fit_calibrator
+
+    classes, variants, result = analysis
+    y = (classes >= 1).astype(int)
+    cal = fit_calibrator("sigmoid", variants["raw"], y)
+
+    record = calibrate.deployment_record(cal, result, "sigmoid", {"model_uri": "models:/x@y"})
+
+    pv = result["per_variant"]["sigmoid"]
+    assert record["threshold"] == pv["in_sample"].threshold
+    assert record["reported_cost_cross_fitted"] == pv["cross_fit"].cost  # not the optimistic one
+    assert record["calibrator"]["slope"] > 0
+    assert "stricter mapping" in record["caveat_literal_mapping"]
+    assert "untouched" in record["test_split"]

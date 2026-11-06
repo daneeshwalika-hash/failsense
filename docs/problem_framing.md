@@ -1014,6 +1014,18 @@ break-even precision is only about 3 %, barely above the 2.7 % base rate. (2) Th
 but modest saving by *not* alerting the 40 % of trucks with the lowest scores while missing 15 % of
 the positives. (3) The "riskiest 5 %" view used so far is a bad policy under these costs.
 
+**Deployment choice for the service (decided 06.11, `deployment_choice` in the summary JSON).**
+Label-free **sigmoid calibrator** (slope 0.526, intercept −1.957 on `logit(score)`, fitted on
+out-of-fold scores of the calibrated evaluation set, no validation labels) + **threshold 0.0353
+learned on the whole validation set** (primary mapping, TP = 0): alert if the calibrated probability
+is at least 0.0353. The cost to quote is the **cross-fitted 28,220** (always-alert 34,370, saving
+6,150, better in 5/5 folds); the in-sample 27,565 of the final threshold is optimistic. The test
+split is still untouched and is used once at the very end.
+
+> **Caveat that must travel with every result:** this positive result depends on the primary
+> mapping (a), "an alert on a truck of class 1–4 costs 0". Under the stricter mapping (b) "alert =
+> predicted class 1" the model saves only **148 vs. never-alert** (57,252 vs. 57,400).
+
 Open points: the evaluation set's class mix (95.6 % class 1, 0 % class 4) is very different from
 the validation's (56 % class 4); this makes the label-free t\* (0.033) higher than a
 validation-mix t\* would be (0.016, documentation only) and may make the evaluation-set calibrator

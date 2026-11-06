@@ -79,6 +79,33 @@ class Calibrator:
         return np.asarray(self.model.predict(scores), dtype=float)
 
 
+def sigmoid_parameters(calibrator: Calibrator) -> dict[str, Any]:
+    """Slope and intercept of a sigmoid calibrator, so a service can apply it without sklearn.
+
+    ``p_cal = 1 / (1 + exp(-(intercept + slope * logit(clip(score, eps, 1 - eps)))))``.
+
+    Raises:
+        ValueError: If the calibrator is not a sigmoid.
+    """
+    if calibrator.kind != "sigmoid":
+        raise ValueError("only a sigmoid calibrator has slope / intercept parameters")
+    return {
+        "kind": "sigmoid",
+        "slope": float(calibrator.model.coef_[0, 0]),
+        "intercept": float(calibrator.model.intercept_[0]),
+        "logit_clip_eps": _LOGIT_EPS,
+    }
+
+
+def apply_sigmoid_parameters(params: dict[str, Any], p: Sequence[float] | np.ndarray) -> np.ndarray:
+    """Apply stored sigmoid parameters (the inverse of ``sigmoid_parameters``)."""
+    scores, _ = _check_scores(p)
+    eps = float(params["logit_clip_eps"])
+    clipped = np.clip(scores, eps, 1 - eps)
+    z = params["intercept"] + params["slope"] * np.log(clipped / (1 - clipped))
+    return 1.0 / (1.0 + np.exp(-z))
+
+
 def fit_calibrator(
     kind: str, p: Sequence[float] | np.ndarray, y: Sequence[int] | np.ndarray
 ) -> Calibrator:

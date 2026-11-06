@@ -492,6 +492,27 @@
       "clear": true
     }
   },
+  "deployment_choice": {
+    "model_uri": "models:/failsense-q1@candidate",
+    "calibrator": {
+      "kind": "sigmoid",
+      "slope": 0.5258518583100283,
+      "intercept": -1.957385934102395,
+      "logit_clip_eps": 1e-06
+    },
+    "calibrator_fitted_on": "out-of-fold scores of the calibrated validation-like set (training trucks, no validation labels)",
+    "threshold": 0.0353238553943719,
+    "threshold_learned_on": "the whole official validation set (alert if calibrated p >= threshold)",
+    "mapping": "primary (false alarm 7, miss 200-500, alert on a positive 0)",
+    "reported_cost_cross_fitted": 28220.0,
+    "cost_in_sample_optimistic": 27565.0,
+    "cost_always_alert": 34370.0,
+    "cost_never_alert": 57400.0,
+    "saving_vs_always_alert": 6150.0,
+    "folds_better": "5/5",
+    "caveat_literal_mapping": "under the stricter mapping (alert = predicted class 1) the model saves only 148 vs. never-alert; the positive result depends on the primary mapping",
+    "test_split": "untouched; used once at the very end"
+  },
   "verdict": "Primary variant sigmoid: cross-fitted saving vs. always-alert +6,150 in total (+1.219 per truck), per fold +1,230 +- 750 (std over 5 folds), better in 5/5 folds. The saving is larger than the fold spread: the model beats always-alert.",
-  "timing_seconds": 87.04179436699997
+  "timing_seconds": 88.70089387200005
 }

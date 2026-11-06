@@ -88,6 +88,10 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   1.22 per truck, better in 5/5 folds), alerting only the riskiest 5 % costs 50,231. Under the
   stricter reading "alert = predicted class 1" the model is no better than never alerting
   (`make calibrate`, `docs/problem_framing.md` §6).
+- **Deployment choice (06.11):** label-free sigmoid calibrator + alert threshold 0.0353 learned on the
+  whole validation set; quote the cross-fitted cost 28,220, not the in-sample one. The saving depends
+  on the primary cost mapping (an alert on a failing truck is free); under "alert = predicted class
+  1" the model saves only 148 vs. never alerting. The test split is still untouched.
 - Not done yet: SHAP / feature importance and the other questions (Q2–Q5). No target for the total
   cost is set.
 

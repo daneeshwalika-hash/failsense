@@ -160,3 +160,24 @@ def test_reliability_table_zoom_keeps_only_low_probabilities() -> None:
 def test_reliability_table_needs_enough_rows() -> None:
     with pytest.raises(ValueError, match="bins"):
         reliability_table([0, 1], [0.1, 0.2], n_bins=10)
+
+
+def test_sigmoid_parameters_reproduce_the_calibrator() -> None:
+    from failsense.models.calibration import apply_sigmoid_parameters, sigmoid_parameters
+
+    p, y = synthetic(2000)
+    cal = fit_calibrator("sigmoid", p, y)
+
+    params = sigmoid_parameters(cal)
+
+    assert params["slope"] > 0
+    np.testing.assert_allclose(apply_sigmoid_parameters(params, p), cal.predict(p), atol=1e-12)
+
+
+def test_sigmoid_parameters_refuse_isotonic() -> None:
+    from failsense.models.calibration import sigmoid_parameters
+
+    p, y = synthetic(500)
+
+    with pytest.raises(ValueError, match="sigmoid"):
+        sigmoid_parameters(fit_calibrator("isotonic", p, y))

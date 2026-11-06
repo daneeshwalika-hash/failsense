@@ -51,6 +51,7 @@ from failsense.models.calibration import (
     fit_calibrator,
     probability_metrics,
     reliability_table,
+    sigmoid_parameters,
 )
 from failsense.models.cost import (
     alert_class_from_config,
@@ -277,6 +278,43 @@ def threshold_rows(result: Mapping[str, Any], n_trucks: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def deployment_record(
+    calibrator: Any, result: Mapping[str, Any], primary: str, registry: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The choice that goes into the service on 07.11 (decided 06.11).
+
+    Label-free sigmoid calibrator (fitted on out-of-fold scores of the calibrated evaluation
+    set) + the threshold learned on the WHOLE validation set (primary mapping, TP = 0). The
+    cost to quote is the cross-fitted one; the in-sample cost of the final threshold is
+    optimistic. The positive result depends on the primary mapping.
+    """
+    pv = result["per_variant"][primary]
+    base = pv["baselines"].set_index("policy")["cost"]
+    saving, sens = pv["cross_fit_saving"], result["sensitivity"]
+    return {
+        "model_uri": registry["model_uri"],
+        "calibrator": sigmoid_parameters(calibrator),
+        "calibrator_fitted_on": "out-of-fold scores of the calibrated validation-like set "
+        "(training trucks, no validation labels)",
+        "threshold": pv["in_sample"].threshold,
+        "threshold_learned_on": "the whole official validation set (alert if calibrated p >= "
+        "threshold)",
+        "mapping": "primary (false alarm 7, miss 200-500, alert on a positive 0)",
+        "reported_cost_cross_fitted": pv["cross_fit"].cost,
+        "cost_in_sample_optimistic": pv["in_sample"].cost,
+        "cost_always_alert": float(base["always_alert"]),
+        "cost_never_alert": float(base["never_alert"]),
+        "saving_vs_always_alert": saving["total_saving"],
+        "folds_better": f"{saving['folds_better']}/{saving['n_folds']}",
+        "caveat_literal_mapping": (
+            f"under the stricter mapping (alert = predicted class 1) the model saves only "
+            f"{sens['saving_vs_best_trivial']:,.0f} vs. never-alert; the positive result depends "
+            f"on the primary mapping"
+        ),
+        "test_split": "untouched; used once at the very end",
+    }
+
+
 def verdict(result: Mapping[str, Any], primary: str) -> str:
     """Plain-language answer to "does the model beat always-alert?" (primary variant)."""
     s = result["per_variant"][primary]["cross_fit_saving"]
@@ -424,6 +462,7 @@ def run(config: Mapping[str, Any], track: bool = True) -> dict[str, Any]:
     y_val = (classes >= 1).astype(int)
     n_splits, seed = int(cal["n_splits"]), int(cal["seed"])
     variants = build_variants(p_eval, y_eval, p_val, y_val, vehicles, n_splits, seed)
+    primary_calibrator = fit_calibrator(str(cal["primary"]), p_eval, y_eval)
 
     result = analyze(classes, vehicles, variants, float(y_eval.mean()), eval_counts, config)
     primary = str(cal["primary"])
@@ -469,6 +508,7 @@ def run(config: Mapping[str, Any], track: bool = True) -> dict[str, Any]:
         "primary_decision_cross_fitted": pv["cross_fit_decision"],
         "primary_decision_in_sample_optimistic": pv["in_sample_decision"],
         "sensitivity_literal": result["sensitivity"],
+        "deployment_choice": deployment_record(primary_calibrator, result, primary, registry),
         "verdict": text,
         "timing_seconds": time.perf_counter() - t0,
     }  # fmt: skip
