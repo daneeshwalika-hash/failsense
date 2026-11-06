@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate rul-baseline analysis test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate rul-baseline analysis class-mix test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -46,6 +46,9 @@ rul-baseline:  ## C-MAPSS FD001 RUL: Dummy / Ridge / Lasso baselines, GroupKFold
 analysis:  ## Outlier analysis and time_step check (writes CSV/Markdown/figures to reports/)
 	uv run python -m failsense.analysis.outliers
 	uv run python -m failsense.analysis.time_step_check
+
+class-mix:  ## Why the calibrated eval set has another class mix than the validation (training data only)
+	uv run python -m failsense.analysis.class_mix
 
 test:   ## Run the test suite (no raw data needed)
 	uv run pytest

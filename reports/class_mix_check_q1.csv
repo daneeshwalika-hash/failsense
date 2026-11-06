@@ -1,0 +1,5 @@
+set,n_positive,positive_rate,chi2_vs_reference,c1,c2,c3,c4
+calibrated,635,0.0270,inf,607,26,2,0
+literal,614,0.0261,181.6820,281,158,71,104
+rank,2262,0.0961,150.9670,36,73,200,1953
+official validation (reference),136,0.0270,0.0000,16,14,30,76
