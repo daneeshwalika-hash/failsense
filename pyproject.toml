@@ -21,6 +21,7 @@ dependencies = [
     # xgboost-cpu = the CPU-only build of XGBoost: the same `import xgboost`, but no NVIDIA/NCCL
     # packages (the plain `xgboost` wheel pulls nvidia-nccl-cu13 on Linux). Much smaller, which
     # matters for the Docker image; this project has no GPU.
+    "shap>=0.54.1",
     "xgboost-cpu>=3.4.1",
 ]
 

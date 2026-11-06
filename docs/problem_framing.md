@@ -1,6 +1,9 @@
 # Problem Framing — FailSense
 
-> Status: **v1.6 (06.11.2026, open point: label shift for Q2, decision on 07.11)**.
+> Status: **v1.7 (06.11.2026, SHAP and permutation importance of the candidate, §6)**: grouped
+> permutation finds only the histogram groups 459 and 291 clearly above the spread; grouped SHAP ranks
+> 397, 459, 666, 167, 291; 397 is #1 by SHAP and gain but its shuffle does not hurt the validation PR-AUC.
+> v1.6 (06.11.2026, open point: label shift for Q2, decision on 07.11)**.
 > v1.5 (06.11.2026, class-mix check: the calibrated evaluation set's class mix is an
 > artefact of rank matching; open point, §6, §8)**.
 > v1.4 (06.11.2026, scope: Bosch CNC cut from v1.0, see ADR 0003). Q4 (anomaly
@@ -1083,6 +1086,85 @@ with the class mix **published in the dataset paper** (aggregate numbers, like 1
 never per-row validation labels. The paper's test class counts exist as well; they are not used.
 Alternatives to weigh against it: no correction (report the shift), or class weights.
 
+### SHAP and permutation importance (06.11, `make explain`)
+
+Model `failsense-q1@candidate`, official validation (5,046 last readouts, 136 positives), test split
+untouched. Files: `reports/explain_q1_summary.json`, `explain_q1_groups.csv`, `explain_q1_columns.csv`,
+figures `reports/figures/explain_q1_*.png`, MLflow run `explain_q1`. The explanations describe what the
+**model** uses, not what causes a failure (the 14 variables are anonymised).
+
+**Methods and units.** SHAP (`shap` 0.54.1, `TreeExplainer` on the XGBoost step after the Pipeline's
+preprocessing; one-hot columns summed back to their spec) gives additive contributions to the **raw
+log-odds of the uncalibrated model**: base value −3.60 (p = 0.027) + sum of SHAP = margin. The deployed
+sigmoid calibrator is linear in the margin, so the calibrated contribution is exactly 0.526 × SHAP;
+risks are always quoted as calibrated probabilities. Permutation importance (needs labels, so it is an
+evaluation of the fitted model, never a feature-selection tool) shuffles a column or a **group of
+columns** (all raw and engineered columns of one variable, jointly) 20 times on the validation and
+reports the drop of PR-AUC (baseline 0.0653) as mean ± std of the repeats. That spread is the shuffle
+noise only; the sampling noise of 136 positives comes on top. A drop counts as **reliable** if
+`mean − 2·std > 0`; groups inside the spread are not ranked. Gain importance (XGBoost) is shown as the
+biased reference: it is computed on the training data, favours continuous columns with many split points,
+splits credit arbitrarily between correlated columns, is unsigned and says nothing about held-out
+performance.
+
+> **Limitation.** `TreeExplainer` runs with the default `feature_perturbation="tree_path_dependent"` (no
+> background data; the trees' own cover statistics stand in for the data distribution). With correlated
+> features (histogram bins and their shares, counters and their deltas) this can split credit between
+> them in an unintuitive way. The `interventional` variant with a training background sample is the
+> alternative; it is not used, for runtime reasons. This is why the main comparison is made on **groups**.
+
+| Group (variable) | Columns | Permutation drop of PR-AUC (mean ± std) | Reliable | Mean abs. SHAP of the group | Gain share |
+|---|---|---|---|---|---|
+| 397 (histogram) | 74 | −0.0023 ± 0.0067 | no | **0.630** (rank 1) | 23.5 % |
+| **459 (histogram)** | 42 | **+0.0131 ± 0.0039** | **yes (rank 1)** | 0.514 (rank 2) | 18.2 % |
+| 666 (counter) | 3 | +0.0090 ± 0.0054 | no | 0.211 (rank 3) | 9.1 % |
+| 167 (histogram) | 22 | +0.0076 ± 0.0046 | no | 0.170 (rank 4) | 7.3 % |
+| **291 (histogram)** | 24 | **+0.0077 ± 0.0025** | **yes (rank 2)** | 0.137 (rank 5) | 6.6 % |
+| 158 (histogram) | 22 | +0.0055 ± 0.0040 | no | 0.122 | 8.6 % |
+| `time_step` | 1 | +0.0019 ± 0.0027 | no | 0.057 (rank 11) | 0.4 % |
+| Spec_4 | 1 | +0.0005 ± 0.0001 | yes, but negligible | 0.003 | 0.7 % |
+| Spec_0 | 1 | 0 | no | 0 (never used) | 0 % |
+
+(Full table with all 23 groups: `explain_q1_groups.csv`.)
+
+- **Where grouped permutation and grouped SHAP agree:** the histogram groups **459** and **291**. Both are
+  in the top 5 of SHAP, and both are the only groups with a drop clearly above the spread (459: about
+  20 % of the PR-AUC; 291: about 12 %). Spec_4 is "reliable" only because its spread is tiny; its effect
+  (0.0005) is below 1 % of the PR-AUC and SHAP gives it nothing.
+- **Where they disagree:** **397 (histogram)** is rank 1 by grouped SHAP and by gain, yet shuffling it
+  does not hurt the validation PR-AUC (−0.0023 ± 0.0067): the model uses these 74 columns heavily, but
+  on this validation sample they do not help the ranking (they may fit noise, or the class mix differs,
+  see the class-mix check). **666 (counter)** and **167 (histogram)** are in the SHAP top 5 with drops
+  of +0.0090 and +0.0076, but their spreads are as large as the drops: 20 of 23 groups, including
+  these, are **inside the spread and are not ranked**. Spearman rank correlation of the two measures
+  over all 23 groups: 0.57.
+- **Gain** has the same top 3 as SHAP (397, 459, 666) but overstates the specs and the 158 / 272
+  histograms and understates `time_step` (0.4 % of the gain vs. 2.4 % of the SHAP).
+- **Beeswarm:** the typical validation truck gets about +0.3 log-odds from `459_9` and `666_0` alone,
+  so the explanations start far above the base value; it is the same shift that makes the raw
+  probabilities about 4 × too high on the validation (mean 0.112 vs. base 0.027).
+- **`time_step`** (dependence plot): positive SHAP (up to +0.3) at about 50–130 steps, slightly negative
+  later; a handful of trucks with `time_step` < 50 get strongly negative values. Not a monotone "older
+  means riskier" effect.
+
+**Two stories** (rows chosen by a rule fixed in advance: the true positive with the highest calibrated
+probability and the lowest-scoring class-4 truck below the deployed threshold 0.0353; figures
+`explain_q1_waterfall_*.png`):
+
+1. *Highest-risk true positive, truck 27806, class 3 (6–12 steps before the repair), calibrated p = 0.188
+   (5.3 × the threshold).* From the base value −3.60 the margin rises to +0.94. The strongest pushes up are
+   the growth rate of counter `666_0` since the last readout (+0.77), a high value in bin 9 of histogram
+   459 (33,001, +0.48), a very high growth rate of counter `427_0` (+0.31), the cumulative `666_0`
+   (127,501, +0.25), nothing in the top bin of histogram 158 (+0.17) and specification `Spec_7 = Cat4`
+   (+0.12). The top 8 add +2.41, the other 231 input features +2.12 together; nothing in the top 8 pushes down. The signal is
+   spread over many features.
+2. *Worst miss, truck 16995, class 4 (0–6 steps before the repair), calibrated p = 0.020 (below the
+   threshold).* The margin is −3.67, almost exactly the base value −3.60: the evidence cancels out. A
+   mid-sized value in histogram 459 bin 9 (9,329, +0.24) and bins 3 and 15 push up; a low share in bin 12
+   of histogram 397 (−0.16), a low cumulative `666_0` (63,015, −0.15) and the shares of histograms 291 and
+   167 push down. This truck looked like an average truck to the model: the explanation shows that the
+   miss is missing signal, not a threshold detail.
+
 ## 7. Evaluation protocol
 
 - **SCANIA:** official split by truck (train / validation / test). No own random split.
@@ -1165,6 +1247,9 @@ Alternatives to weigh against it: no correction (report the shift), or class wei
 
 ## Change log
 
+- **v1.7 (06.11.2026):** SHAP (TreeExplainer, tree_path_dependent, limitation stated), grouped and single
+  permutation importance (20 repeats, reliable = mean − 2 std > 0), gain importance, two waterfall stories,
+  `explain/` package with `top_shap_factors` for `/explain` and the LLM report (§6).
 - **v1.6 (06.11.2026):** open point for 07.11: Q2 faces label shift (training mostly class 1, official
   validation mostly class 4); option: prior-shift correction with the class mix published in the paper (§6).
 - **v1.5 (06.11.2026):** class-mix check on training data (`analysis/class_mix.py`, `make class-mix`):

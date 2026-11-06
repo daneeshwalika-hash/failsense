@@ -127,3 +127,13 @@ calibration:
   top_fraction: 0.05       # baseline "alert the riskiest 5 %"
   n_bootstrap: 500         # bootstrap resamples (trucks) for the PR-AUC interval
   log_loss_eps: 1.0e-6     # probabilities are clipped to [eps, 1 - eps] for the log loss
+
+explain:
+  # Step 06.11 (SHAP + permutation importance) on the official validation (5,046 last readouts).
+  n_repeats: 20            # shuffles per column / group for the permutation importance
+  seed: 42
+  top_k: 5                 # factors per truck in the explanations
+  story_k: 8               # factors shown in the two waterfall stories
+  max_display: 20          # features in the beeswarm / bar plots
+  waterfall_display: 12
+  top_groups: 5            # groups compared between permutation and SHAP

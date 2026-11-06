@@ -92,7 +92,10 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   whole validation set; quote the cross-fitted cost 28,220, not the in-sample one. The saving depends
   on the primary cost mapping (an alert on a failing truck is free); under "alert = predicted class
   1" the model saves only 148 vs. never alerting. The test split is still untouched.
-- Not done yet: SHAP / feature importance and the other questions (Q2–Q5). No target for the total
+- **Explanations (SHAP, `make explain`):** on the validation only two histogram groups (459, 291) lose
+  PR-AUC clearly when shuffled; the group with the largest SHAP and gain (397) does not. SHAP values are
+  in raw log-odds of the uncalibrated model; `top_shap_factors` returns the top features per truck.
+- Not done yet: the other questions (Q2–Q5). No target for the total
   cost is set.
 
 **Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
