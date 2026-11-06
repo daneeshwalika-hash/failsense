@@ -25,7 +25,13 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
 
-from failsense.data.labels import BINARY_COL, VEHICLE_COL, build_labels, class_bounds_from_config
+from failsense.data.labels import (
+    BINARY_COL,
+    CLASS_COL,
+    VEHICLE_COL,
+    build_labels,
+    class_bounds_from_config,
+)
 from failsense.data.sampling import sample_cutoffs, sampling_params_from_config
 from failsense.data.schema import counter_columns, histogram_groups
 from failsense.data.split import cv_params_from_config, make_group_folds
@@ -134,6 +140,9 @@ def build_tuning_data(
         cut, info = build_eval_cutoffs_by_method(method, labels, targets, repaired, seed)
         eval_frames[method] = frame(cut).reset_index(drop=True)
         eval_info[method] = {**info, "n": float(len(cut)), "rate": float(cut[BINARY_COL].mean())}
+        # class mix of the evaluation rows (TRAINING labels): used for the cost threshold
+        for k in range(5):
+            eval_info[method][f"n_class_{k}"] = float((cut[CLASS_COL] == k).sum())
 
     train_fold = train[VEHICLE_COL].map(vehicle_fold).to_numpy()
     eval_fold = {m: f[VEHICLE_COL].map(vehicle_fold).to_numpy() for m, f in eval_frames.items()}
