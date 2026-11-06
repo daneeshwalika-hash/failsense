@@ -1,6 +1,9 @@
 # Problem Framing — FailSense
 
-> Status: **v1.7 (06.11.2026, SHAP and permutation importance of the candidate, §6)**: grouped
+> Status: **v1.8 (06.11.2026, `matched` vs. `k5` on the official validation: keep `k5`)**: `matched` has the
+> better PR-AUC (0.0913 vs. 0.0653, difference +0.0260 > spread 0.0114) but its cost saving (2,165) is
+> below its spread (3,285), so the pre-set rule keeps `k5`; "none vs. balanced" closed (no class weights).
+> v1.7 (06.11.2026, SHAP and permutation importance of the candidate, §6)**: grouped
 > permutation finds only the histogram groups 459 and 291 clearly above the spread; grouped SHAP ranks
 > 397, 459, 666, 167, 291; 397 is #1 by SHAP and gain but its shuffle does not hurt the validation PR-AUC.
 > v1.6 (06.11.2026, open point: label shift for Q2, decision on 07.11)**.
@@ -1172,6 +1175,40 @@ probability and the lowest-scoring class-4 truck below the deployed threshold 0.
    167 push down. This truck looked like an average truck to the model: the explanation shows that the
    miss is missing signal, not a threshold detail.
 
+### `matched` vs. `k5` on the official validation (06.11, `make matched-check`) and "none vs. balanced"
+
+One-time check left open on 05.11 (`reports/matched_check_q1.json`, MLflow run `matched_vs_k5_validation`).
+Same recipe as the registered candidate (XGBoost, 300 rounds, same parameters, engineered features, no class
+weights, same 239 columns); only the training rows differ: `k5` = the registered model (117,031 rows, 2.8 %
+positives), `matched` = 5 cut-offs per truck following the validation `time_step` (70,909 rows, 7.8 %
+positives). **Rule fixed before the run:** switch only if `matched` is better in **both** PR-AUC and the
+cross-fitted cost by more than the std of the paired bootstrap difference (500 resamples of the validation
+trucks, same trucks and folds for both models); otherwise keep `k5`.
+
+| | `k5` (registered) | `matched` | Difference (matched − k5) | Bootstrap spread (std) | Rule |
+|---|---|---|---|---|---|
+| PR-AUC (95 % interval) | 0.0653 (0.048–0.102) | **0.0913** (0.068–0.128) | **+0.0260** (95 % interval +0.0044 … +0.0477; better in 98.8 % of the draws) | 0.0114 | above the spread |
+| Cross-fitted cost (primary mapping) | 28,220 | **26,055** | saving **2,165** (95 % interval −3,011 … +9,504; cheaper in 79.4 % of the draws) | 3,285 | **not above the spread** |
+
+**Decision: keep `k5`, by the pre-registered rule.** The rule was written into the module docstring and into
+`decide_sampling` **before the run**, and the code applied it unchanged. We keep it because a rule that is
+relaxed after the result is seen is no longer a test: with only 136 positives the cost metric is exactly the
+place where a favourable point estimate (2,165) is easy to over-read. `matched` is therefore **not** adopted
+now and is revisited later (open point), not rejected. Honest reading: the ranking of `matched` is better on the
+official validation, which shares no mechanism with the matching (the interval of the PR-AUC difference
+excludes 0); the cost saving (7.7 %) points the same way but is smaller than its noise: 136 positives and a
+threshold learned on 4/5 of them cannot resolve it. Reasons that also favour `k5` in practice: the deployed
+calibrator and threshold belong to `k5`; `matched` would need a new calibrator, whose label-free fit rests on
+the evaluation set built by the same rank matching (the 607 / 26 / 2 / 0 artefact, class-mix check above), a
+circular dependence; and the validation is now used for a selection, so its numbers are slightly optimistic.
+`matched` stays the first candidate to revisit if the protocol is reworked (open point). The test split is
+untouched.
+
+**"none vs. balanced" closed.** The deployed XGBoost uses **no class weights**: a positive weight (neg/pos
+35.2) was worse on 04.11 (−0.0087, mean probability 0.26 instead of about 0.03) and, for the logistic
+regression, "balanced" and "none" are tied (−0.0020 ± 0.0029); the probability level is handled by the sigmoid
+calibration (Brier 0.026 on the validation, §6 calibration).
+
 ## 7. Evaluation protocol
 
 - **SCANIA:** official split by truck (train / validation / test). No own random split.
@@ -1254,6 +1291,8 @@ probability and the lowest-scoring class-4 truck below the deployed threshold 0.
 
 ## Change log
 
+- **v1.8 (06.11.2026):** one-time `matched` vs. `k5` check on the official validation with a rule fixed in
+  advance (paired bootstrap, PR-AUC and cross-fitted cost): keep `k5`; "none vs. balanced" closed (§6).
 - **v1.7 (06.11.2026):** SHAP (TreeExplainer, tree_path_dependent, limitation stated), grouped and single
   permutation importance (20 repeats, reliable = mean − 2 std > 0), gain importance, two waterfall stories,
   `explain/` package with `top_shap_factors` for `/explain` and the LLM report (§6).
