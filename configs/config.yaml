@@ -230,3 +230,10 @@ retrain:
   challenger_file: reports/hpo_q1_best_params.json   # Optuna result of make tune
   challenger_model: xgboost
   mlflow_experiment: failsense-retrain
+
+freeze:
+  # One frozen evaluation on the test splits (docs/test_evaluation_plan.md). `make freeze` trains the
+  # Q2 and RUL models on TRAINING data only, copies the Q1 model and writes a manifest with SHA-256
+  # hashes. The frozen files stay in the git-ignored folder; the manifest is committed.
+  dir: artifacts/frozen
+  manifest: reports/frozen_manifest.json
