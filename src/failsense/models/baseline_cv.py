@@ -67,9 +67,8 @@ from failsense.data.sampling import sample_cutoffs, sampling_params_from_config
 from failsense.data.schema import counter_columns, histogram_groups
 from failsense.data.split import cv_params_from_config, make_group_folds
 from failsense.features.build import (
-    add_counter_deltas,
-    add_histogram_features,
     attach_specifications,
+    build_model_features,
     features_params_from_config,
 )
 from failsense.models.pipeline import (
@@ -168,17 +167,11 @@ def frame_from_sampled(
         counter_cols, hist_groups, top_fraction: Engineered features, see
             ``build_training_frame``.
 
-    Only the binary label is attached; the other label columns stay in the
+    The features come from ``failsense.features.build.build_model_features`` (shared with the
+    prediction API). Only the binary label is attached here; the other label columns stay in the
     label table and never come near the features.
     """
-    frame = readouts.loc[sampled.index].copy()
-    if counter_cols:
-        key_and_counters = readouts[[VEHICLE_COL, TIME_COL, *counter_cols]]
-        with_deltas = add_counter_deltas(key_and_counters, counter_cols)
-        new_cols = [c for c in with_deltas.columns if c not in key_and_counters.columns]
-        frame = frame.join(with_deltas.loc[sampled.index, new_cols])
-    if hist_groups:
-        frame = add_histogram_features(frame, hist_groups, top_fraction)
+    frame = build_model_features(readouts, sampled.index, counter_cols, hist_groups, top_fraction)
     frame[BINARY_COL] = sampled[BINARY_COL].astype(int)
     return frame
 
@@ -197,7 +190,8 @@ def build_training_frame(
 
     The label table has the same index as ``readouts`` (see ``build_labels``),
     so ``readouts.loc[sampled.index]`` selects exactly the sampled readouts.
-    Only the binary label is attached; the other label columns stay in the
+    The features come from ``failsense.features.build.build_model_features`` (shared with the
+    prediction API). Only the binary label is attached here; the other label columns stay in the
     label table and never come near the features.
 
     Engineered features (both optional, off by default):

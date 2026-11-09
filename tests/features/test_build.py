@@ -13,6 +13,7 @@ from failsense.features.build import (
     add_counter_deltas,
     add_histogram_features,
     attach_specifications,
+    build_model_features,
     engineered_columns,
     features_params_from_config,
     n_top_bins,
@@ -346,3 +347,50 @@ def test_label_columns_in_input_are_not_transformed(readouts: pd.DataFrame) -> N
     df = readouts.assign(in_study_repair=1, length_of_study_time_step=100.0)
     out = add_counter_deltas(df, [C])
     assert engineered_columns(list(out.columns)) == [f"{C}__delta", f"{C}__rate"]
+
+
+# --- build_model_features: the one builder shared by training, validation and the API ----
+def test_model_features_match_frame_from_sampled_without_the_label(
+    mini_frames: dict[str, pd.DataFrame],
+) -> None:
+    from failsense.models.baseline_cv import frame_from_sampled
+
+    readouts = mini_frames["readouts"]
+    sampled = pd.DataFrame({BINARY_COL: 1}, index=readouts.index[::7])
+    args = (counter_columns(), histogram_groups(), 0.2)
+
+    features = build_model_features(readouts, sampled.index, *args)
+    training = frame_from_sampled(readouts, sampled, *args)
+
+    assert BINARY_COL not in features.columns  # the shared builder never touches labels
+    pd.testing.assert_frame_equal(training.drop(columns=BINARY_COL), features)
+
+
+def test_two_readouts_give_the_same_last_row_as_the_full_history(
+    mini_frames: dict[str, pd.DataFrame],
+) -> None:
+    """Every feature needs at most the immediately preceding readout (API contract)."""
+    args = (counter_columns(), histogram_groups(), 0.2)
+    truck = mini_frames["readouts"].query("vehicle_id == 3").reset_index(drop=True)
+    last = truck.index[-1]
+
+    full = build_model_features(truck, pd.Index([last]), *args)
+    two = truck.iloc[-2:].reset_index(drop=True)
+    pair = build_model_features(two, pd.Index([1]), *args)
+
+    pd.testing.assert_frame_equal(full.reset_index(drop=True), pair.reset_index(drop=True))
+
+
+def test_single_readout_has_nan_deltas_like_a_trucks_first_readout(
+    mini_frames: dict[str, pd.DataFrame],
+) -> None:
+    args = (counter_columns(), histogram_groups(), 0.2)
+    truck = mini_frames["readouts"].query("vehicle_id == 3").reset_index(drop=True)
+
+    first_in_history = build_model_features(truck, pd.Index([0]), *args)
+    alone = build_model_features(truck.iloc[[0]], pd.Index([0]), *args)
+
+    delta_cols = [c for c in alone.columns if c.endswith(("__delta", "__rate"))]
+    assert len(delta_cols) == 2 * len(counter_columns())
+    assert alone[delta_cols].isna().all().all()
+    pd.testing.assert_frame_equal(first_in_history, alone)
