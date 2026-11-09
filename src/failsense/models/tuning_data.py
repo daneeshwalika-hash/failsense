@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -63,6 +63,7 @@ class FoldData:
     x_eval: dict[str, dict[str, np.ndarray]]  # eval method -> feature set -> rows
     y_eval: dict[str, np.ndarray]
     vehicles_eval: dict[str, np.ndarray]
+    c_eval: dict[str, np.ndarray] = field(default_factory=dict)  # true class 0..4 of the eval rows
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,7 @@ def build_tuning_data(
     for method in eval_methods:
         cut, info = build_eval_cutoffs_by_method(method, labels, targets, repaired, seed)
         eval_frames[method] = frame(cut).reset_index(drop=True)
+        eval_frames[method][CLASS_COL] = cut[CLASS_COL].astype(int).to_numpy()  # never a feature
         eval_info[method] = {**info, "n": float(len(cut)), "rate": float(cut[BINARY_COL].mean())}
         # class mix of the evaluation rows (TRAINING labels): used for the cost threshold
         for k in range(5):
@@ -172,6 +174,8 @@ def build_tuning_data(
                         for m, ef in eval_frames.items()},
                 vehicles_eval={m: ef.loc[eval_fold[m] == f, VEHICLE_COL].to_numpy()
                                for m, ef in eval_frames.items()},
+                c_eval={m: ef.loc[eval_fold[m] == f, CLASS_COL].to_numpy(dtype=int)
+                        for m, ef in eval_frames.items()},
             )
         )  # fmt: skip
         logger.info(

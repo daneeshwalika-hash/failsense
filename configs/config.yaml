@@ -219,3 +219,14 @@ llm:
   seed: 42
   max_attempts: 2
   prompt_path: prompts/maintenance_report_de.md
+
+retrain:
+  # Champion / challenger (ADR 0007, `make retrain`). Both RECIPES are refitted on the training trucks
+  # outside a FIXED holdout (the trucks of one fold of the project's CV, 20 %) and judged on the
+  # validation-like evaluation rows of the holdout trucks by the total cost of the Q1 cost-optimal
+  # alert decision (threshold cross-fitted by truck, so no truck decides its own threshold).
+  holdout_fold: 0
+  n_bootstrap: 500            # resamples of the holdout evaluation rows (paired, seed = seed)
+  challenger_file: reports/hpo_q1_best_params.json   # Optuna result of make tune
+  challenger_model: xgboost
+  mlflow_experiment: failsense-retrain

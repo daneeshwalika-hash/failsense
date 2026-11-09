@@ -293,6 +293,8 @@ def deployment_record(
     saving, sens = pv["cross_fit_saving"], result["sensitivity"]
     return {
         "model_uri": registry["model_uri"],
+        # the calibrator and the threshold belong to THIS version; the API refuses to serve another
+        "model_version": registry["version"],
         "calibrator": sigmoid_parameters(calibrator),
         "calibrator_fitted_on": "out-of-fold scores of the calibrated validation-like set "
         "(training trucks, no validation labels)",

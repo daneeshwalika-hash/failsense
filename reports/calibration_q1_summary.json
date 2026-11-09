@@ -494,6 +494,7 @@
   },
   "deployment_choice": {
     "model_uri": "models:/failsense-q1@candidate",
+    "model_version": "1",
     "calibrator": {
       "kind": "sigmoid",
       "slope": 0.5258518583100283,

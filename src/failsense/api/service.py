@@ -296,6 +296,14 @@ class ModelService:
         mlflow.set_tracking_uri(tracking_uri_override() or f"sqlite:///{resolve_path(db_path)}")
         pipeline = mlflow.sklearn.load_model(uri)
         version = MlflowClient().get_model_version_by_alias(name, alias).version
+        calibrated_for = deployment.get("model_version")
+        if calibrated_for is None:
+            logger.warning("the calibration summary does not name a model version (old file)")
+        elif str(calibrated_for) != str(version):
+            raise ModelConfigError(
+                f"the calibrator and threshold were fitted for version {calibrated_for}, but "
+                f"{uri} is version {version}: run `make calibrate` for this version first."
+            )
         service = cls(
             pipeline=pipeline,
             calibrator=deployment["calibrator"],

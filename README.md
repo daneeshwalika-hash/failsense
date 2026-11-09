@@ -266,6 +266,17 @@ artifact paths that do not exist inside a container). The Ollama server for the 
 started** on the author's machine (Docker Desktop was not running). The same path was exercised without Docker:
 a native `mlflow server`, `make publish-model` against it, and the API loading the model from it.
 
+### Retraining and the model card
+
+```bash
+make retrain      # champion vs. challenger on a fixed holdout (dry run); promote only with 95 % confidence
+```
+
+The tuned challenger is **not** clearly better than the registered recipe (cost -518 ± 759 on the holdout, interval
+includes 0), so the champion stays ([ADR 0007](docs/adr/0007-champion-challenger-promotion.md)). A promoted
+version needs a new calibrator (`make calibrate`); the API refuses a version the calibration summary does not name.
+Intended use, data, metrics and limits of the deployed model: [docs/model_card.md](docs/model_card.md).
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on
