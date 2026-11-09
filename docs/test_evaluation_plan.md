@@ -20,7 +20,7 @@ result is reported whatever it is; nothing is tuned afterwards.
 | Calibration / correction | sigmoid slope 0.5258518583, intercept -1.9573859341, clip eps 1e-6 (`calibration_q1_summary.json`, `deployment_choice`) | prior shift with `pi_train` (counted on the training rows) and `pi_target` = the class mix **published for the validation** (4,910 / 16 / 14 / 30 / 76). The test class counts are **not** used (ADR 0004) | none; the RUL cap 125 of the training target |
 | Decision rule | alert if calibrated risk >= **0.0353238554** | class with the lowest expected cost under the 5 x 5 matrix | point prediction at the last cycle of each test engine |
 | Cost / error | SCANIA matrix: primary mapping (false alarm 7, miss 200-500, alert on a failing truck 0) **and** the literal mapping | 5 x 5 matrix, total cost | RMSE in cycles |
-| Features | the 239 registered input columns (`registry_q1.json`), built by the same shared function as training and validation (last readout per truck, deltas from the previous readout) | same 239 columns | 3 settings + 21 sensors + rolling features of the informative sensors (the 14 non-constant sensors of the training engines), past cycles of the same engine only |
+| Features | the 239 registered input columns (`registry_q1.json`), built by the same shared function as training and validation (last readout per truck, deltas from the previous readout) | same 239 columns | 3 settings + 21 sensors + rolling features of the informative sensors (the 15 non-constant sensors of the training engines (frozen list)), past cycles of the same engine only |
 | Seeds | fixed (42) | fixed (42) | fixed (42) |
 
 ## 3. The freeze step (must be approved and run first, it does not touch test data)
