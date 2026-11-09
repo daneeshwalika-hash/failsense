@@ -116,3 +116,24 @@ def test_setup_mlflow_uses_the_server_uri_when_the_override_is_set(
     experiment_id = setup_mlflow(config)
     assert mlflow.get_tracking_uri() == uri and experiment_id
     assert not (tmp_path / "local.db").exists()
+
+
+def test_the_published_signature_has_inputs_only_and_logs_no_integer_schema_warning(
+    tiny_pipeline: tuple[Any, Any, Any], tmp_path: Path
+) -> None:
+    import warnings
+
+    pipeline, frame, _ = tiny_pipeline
+    source, target = registry(tmp_path, "source"), registry(tmp_path, "target")
+    register_model(source, tmp_path, pipeline, frame)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        publish.copy_registered_model(
+            source, target, "failsense-q1", "candidate", list(frame.columns)
+        )
+    assert not [w for w in caught if "integer column" in str(w.message)]
+    mlflow.set_tracking_uri(target)
+    signature = mlflow.models.get_model_info("models:/failsense-q1@candidate").signature
+    types = {c["type"] for c in signature.inputs.to_dict()}
+    assert types == {"double", "string"}  # numbers (null = NaN is fine) and the spec text
+    assert signature.outputs is None  # the integer class-label output is not part of what is served

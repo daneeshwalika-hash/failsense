@@ -307,3 +307,88 @@ def test_the_legacy_variable_still_works_and_the_new_one_wins(
     assert rp.ReportGenerator.from_config({"llm": section}).client.base_url == "http://legacy:11434"
     monkeypatch.setenv(rp.OLLAMA_URL_ENV, "http://new:11434")
     assert rp.ReportGenerator.from_config({"llm": section}).client.base_url == "http://new:11434"
+
+
+# --- numeric grounding: the real answer of qwen2.5:7b (09.11, compose stack) ------------------
+REAL_DATA = rp.ReportInput(
+    risk=0.0443, alert=True, threshold=0.0353, baseline_risk=0.0209,
+    factors=[rp.ReportFactor("459_9", 12461.49, 0.167), rp.ReportFactor("666_0", 86162.0, 0.114)],
+)  # fmt: skip
+REAL_ANSWER = {
+    "summary": (
+        "Das Risiko für eine Reparatur von Component X innerhalb von 48 Zeitschritten beträgt "
+        "4.4%, was 0.3% über der Alarmschwelle von 3.5% liegt."
+    ),
+    "risk_level": "erhöht",
+    "recommendation": (
+        "Bei nächster Gelegenheit prüfen, um eventuelle Probleme frühzeitig zu erkennen."
+    ),
+    "reasons": [
+        {
+            "factor": "459_9",
+            "explanation": "Das Histogramm 459 in Klasse 9 erhöht das Risiko um 0.17%.",
+        },
+        {"factor": "666_0", "explanation": "Der Zähler 666_0 erhöht das Risiko um 0.11%."},
+    ],
+    "caveat": (
+        "Diese Aussage basiert auf statistischen Modellierungen und stellt keine genaue "
+        "Diagnose dar."
+    ),
+}
+
+
+def test_the_real_answer_with_computed_and_misread_percentages_is_rejected() -> None:
+    report = rp.MaintenanceReport(**REAL_ANSWER)
+    assert rp.looks_german(rp.report_texts(report))  # German, valid JSON, grounded factors ...
+    problems = rp.validate_report(report, REAL_DATA, "erhöht")
+    assert len(problems) == 1 and "percentage" in problems[0]  # ... but invented numbers
+    assert rp.ungrounded_percentages(rp.report_texts(report), REAL_DATA) == ["0.3", "0.17", "0.11"]
+
+
+def test_the_corrected_version_of_that_answer_passes() -> None:
+    reason = {
+        "factor": "459_9",
+        "explanation": "Das Histogramm 459 in Klasse 9 erhöht das berechnete Risiko.",
+    }
+    fixed = {
+        **REAL_ANSWER,
+        "summary": "Das Risiko liegt bei 4.4% und damit über der Alarmschwelle von 3.5%.",
+        "reasons": [reason],
+    }
+    assert rp.validate_report(rp.MaintenanceReport(**fixed), REAL_DATA, "erhöht") == []
+
+
+@pytest.mark.parametrize(
+    "text, bad",
+    [("Das Risiko beträgt 4.4% (Durchschnitt 2.1%, Schwelle 3.5%).", []),
+     ("Das Risiko beträgt 4,4 % und die Schwelle 3,5 Prozent.", []),  # comma decimals, the word
+     ("Risiko 4.43% statt 4.4%", []),  # rounding of the given fact
+     ("Das sind 0.9 Prozentpunkte mehr, also 0.9%.", ["0.9"]),  # a computed difference
+     ("Der Faktor erhöht das Risiko um 17 %.", ["17"]),
+     ("Keine Zahl, nur Text ohne Prozent.", [])],
+)  # fmt: skip
+def test_percentages_must_come_from_the_facts(text: str, bad: list[str]) -> None:
+    assert rp.ungrounded_percentages(text, REAL_DATA) == bad
+
+
+def test_a_report_with_invented_percentages_is_retried_and_the_clean_retry_is_used() -> None:
+    clean = valid_json(REAL_DATA)
+    client = FakeClient(json.dumps(REAL_ANSWER, ensure_ascii=False), clean)
+    result = rp.ReportGenerator(client, SYSTEM).generate(REAL_DATA)  # type: ignore[arg-type]
+    assert (result.source, result.attempts) == ("llm", 2)
+    assert "percentage(s) that are not among the given facts" in result.warnings[0]
+
+
+def test_two_reports_with_invented_percentages_fall_back_to_the_template() -> None:
+    bad = json.dumps(REAL_ANSWER, ensure_ascii=False)
+    result = rp.ReportGenerator(FakeClient(bad, bad), SYSTEM).generate(REAL_DATA)  # type: ignore[arg-type]
+    assert (
+        result.source == "fallback" and rp.validate_report(result.report, REAL_DATA, "erhöht") == []
+    )
+
+
+def test_the_prompt_and_the_user_message_say_that_contributions_are_not_percent() -> None:
+    message = rp.build_user_message(REAL_DATA, "erhöht")
+    assert "KEINE Prozentzahl" in message
+    prompt = resolve_path(load_config()["llm"]["prompt_path"]).read_text(encoding="utf-8")
+    assert "niemals als Prozent" in prompt and "Berechne keine Differenzen" in prompt
