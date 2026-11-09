@@ -112,10 +112,15 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   ![Q2 confusion matrices](reports/figures/results_q2_confusion.png)
 - **Unsupervised view (09.11):** PCA + KMeans on the training trucks show weak structure (k = 2,
   silhouette 0.27); the clusters follow the truck specification, not failures (normalised mutual
-  information with repairs 0.007). Anomaly detection (Q4) is next.
+  information with repairs 0.007).
+- **Q4 anomaly detection (09.11, [ADR 0005](docs/adr/0005-anomaly-score-feature-rule.md)):** IsolationForest and
+  LOF fitted on healthy trucks only are close to a random ranking on the validation (PR-AUC 0.030-0.032 vs.
+  prevalence 0.027; the supervised model reaches 0.065-0.069). As an extra feature the anomaly score
+  gives +0.0068 PR-AUC (interval includes 0): the pre-registered rule is met, the evidence is weak, and
+  nothing was re-registered.
 - **Served model:** the API, dashboard, Docker image, prediction log and stream simulator are
   described in the sections below; they use the Q1 model and its calibrated threshold.
-- Not done yet: Q4 (anomaly detection), Q5 (LLM report). No target for the total cost is set.
+- Not done yet: Q5 (LLM report). No target for the total cost is set.
 
 **Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
 `GroupKFold` by engine, RUL capped at 125 cycles, RMSE in cycles (lower is better); the

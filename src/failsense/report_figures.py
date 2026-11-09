@@ -215,7 +215,7 @@ def q3_rmse(reports: Path) -> tuple[list[str], list[float], list[float]]:
         "dummy_mean": "Mean predictor",
         "ridge_a100": "Ridge (alpha 100)",
         "lasso_a0.1": "Lasso (alpha 0.1)",
-        "ridge_a100_cycle": "Ridge + cycle number",
+        "ridge_a100_cycle": "Ridge + cycle number (not adopted)",
     }
     rows = [(label, frame.loc[m, "rmse"], frame.loc[m, "rmse_std"]) for m, label in picks.items()
             if m in frame.index]  # fmt: skip
@@ -274,11 +274,14 @@ def run(config: Mapping[str, Any]) -> list[Path]:
             out / "results_q3_rmse.png",
             "Q3: remaining useful life, NASA C-MAPSS FD001 (GroupKFold by engine)",
             "RMSE in cycles (lower is better)",
-            highlight="Ridge + cycle number",
+            highlight="Ridge (alpha 100)",
             errors=stds,
             lower_is_better=True,
             value_format="{:.1f}",
-            subtitle="Training engines only; simulated data, test file untouched.",
+            subtitle=(
+                "Training engines only; simulated data, test file untouched. Ridge and Lasso tie; "
+                "adding the cycle number is not adopted (docs/results.md, section 8)."
+            ),
         )
     )
     return paths

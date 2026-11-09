@@ -1,0 +1,94 @@
+{
+  "n_train_rows": 117031,
+  "n_healthy_rows": 105671,
+  "n_validation_trucks": 5046,
+  "n_validation_positives": 136,
+  "detectors": [
+    {
+      "detector": "iforest_full",
+      "n_fit_rows": 105671,
+      "pr_auc": 0.031635190405514685,
+      "pr_auc_ci_low": 0.02370936858606223,
+      "pr_auc_ci_high": 0.050553167065688305,
+      "roc_auc": 0.5022702767461363,
+      "prevalence": 0.026952041220768927,
+      "lift": 1.173758608722258,
+      "recall_top_5%": 0.08088235294117647,
+      "precision_top_5%": 0.043478260869565216
+    },
+    {
+      "detector": "iforest_pca",
+      "n_fit_rows": 105671,
+      "pr_auc": 0.029613646753841275,
+      "pr_auc_ci_low": 0.023733963127648326,
+      "pr_auc_ci_high": 0.040295699566535115,
+      "roc_auc": 0.5044492033065772,
+      "prevalence": 0.026952041220768927,
+      "lift": 1.098753393528552,
+      "recall_top_5%": 0.0661764705882353,
+      "precision_top_5%": 0.03557312252964427
+    },
+    {
+      "detector": "lof_pca",
+      "n_fit_rows": 20000,
+      "pr_auc": 0.0321002568842905,
+      "pr_auc_ci_low": 0.026088250862566192,
+      "pr_auc_ci_high": 0.04111937226749642,
+      "roc_auc": 0.5577168443752246,
+      "prevalence": 0.026952041220768927,
+      "lift": 1.1910139429274256,
+      "recall_top_5%": 0.0661764705882353,
+      "precision_top_5%": 0.03557312252964427
+    }
+  ],
+  "supervised_reference_pr_auc_note": "Q1 candidate on the validation: PR-AUC 0.065",
+  "feature_test": {
+    "detector": "iforest_full",
+    "n_seeds": 3,
+    "pr_auc_per_seed": {
+      "without": [
+        0.06532898103788999,
+        0.06643156333401645,
+        0.07280527073624816
+      ],
+      "with": [
+        0.07176538290394285,
+        0.07703031766257538,
+        0.07632821414042848
+      ]
+    },
+    "averaged": {
+      "without": {
+        "pr_auc": 0.06911843400025933,
+        "pr_auc_ci_low": 0.051663541938704975,
+        "pr_auc_ci_high": 0.10345888480751642,
+        "roc_auc": 0.7128474302144483,
+        "prevalence": 0.026952041220768927,
+        "lift": 2.5644971909213865,
+        "recall_top_5%": 0.16911764705882354,
+        "precision_top_5%": 0.09090909090909091
+      },
+      "with": {
+        "pr_auc": 0.07587030847817253,
+        "pr_auc_ci_low": 0.05713465436596166,
+        "pr_auc_ci_high": 0.11263231205702616,
+        "roc_auc": 0.7103555169521985,
+        "prevalence": 0.026952041220768927,
+        "lift": 2.815011592506313,
+        "recall_top_5%": 0.20588235294117646,
+        "precision_top_5%": 0.11067193675889328
+      }
+    },
+    "paired_bootstrap": {
+      "diff": 0.0067518744779132,
+      "std": 0.0045021553171973394,
+      "ci_low": -0.0023204472451219347,
+      "ci_high": 0.01645577216310873,
+      "share_a_better": 0.938
+    },
+    "adopt": true,
+    "rule": "ADR 0005: diff > 0 and diff > paired bootstrap std",
+    "oof_anomaly_score_pr_auc_vs_training_label": 0.03112515356689782
+  },
+  "caveat": "136 positive validation trucks: all intervals are wide; test split untouched"
+}
