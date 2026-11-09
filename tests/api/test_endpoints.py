@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from failsense.api.main import create_app, get_service
+from failsense.api.prediction_log import PredictionLog
 from failsense.api.service import ModelConfigError, ModelService
 
 Payload = Callable[..., dict[str, Any]]
@@ -141,3 +142,86 @@ def test_startup_fails_fast_when_the_model_config_is_wrong() -> None:
 
     with pytest.raises(ModelConfigError, match="differs"), TestClient(create_app(loader=broken)):
         pass
+
+
+# --- prediction log -----------------------------------------------------------------------
+@pytest.fixture
+def logged_client(service: ModelService) -> tuple[TestClient, PredictionLog]:
+    log = PredictionLog(":memory:")
+    app = create_app(loader=lambda: service, log_factory=lambda: log)
+    app.state.prediction_log = log  # no lifespan in this fixture
+    app.dependency_overrides[get_service] = lambda: service
+    return TestClient(app), log
+
+
+def test_predict_writes_one_log_row_with_the_answer(
+    logged_client: tuple[TestClient, PredictionLog], make_payload: Payload
+) -> None:
+    client, log = logged_client
+    answer = client.post("/predict", json=make_payload(vehicle_id=42)).json()
+    client.post("/predict", json=make_payload(with_previous=False))
+    assert log.count() == 2
+    newest, oldest = log.latest(2)
+    assert oldest["vehicle_id"] == 42 and oldest["has_previous"] is True
+    assert oldest["risk"] == answer["risk"] and oldest["alert"] == answer["alert"]
+    assert oldest["threshold"] == answer["threshold"] and oldest["model_version"] == "3"
+    assert newest["has_previous"] is False and newest["time_step"] == 100.0
+
+
+def test_rejected_requests_are_not_logged(
+    logged_client: tuple[TestClient, PredictionLog], make_payload: Payload
+) -> None:
+    client, log = logged_client
+    body = make_payload()
+    body["current"]["class_label"] = 1
+    assert client.post("/predict", json=body).status_code == 422
+    assert log.count() == 0
+
+
+def test_latest_endpoint_returns_rows_newest_first_and_validates_limit(
+    logged_client: tuple[TestClient, PredictionLog], make_payload: Payload
+) -> None:
+    client, _ = logged_client
+    for vehicle in (1, 2, 3):
+        client.post("/predict", json=make_payload(vehicle_id=vehicle))
+    rows = client.get("/predictions/latest", params={"limit": 2}).json()
+    assert [r["vehicle_id"] for r in rows] == [3, 2]
+    assert set(rows[0]) >= {"id", "logged_at", "risk", "alert", "threshold", "model_version"}
+    assert "score" not in rows[0]
+    assert len(client.get("/predictions/latest").json()) == 3  # default limit 20
+    assert client.get("/predictions/latest", params={"limit": 0}).status_code == 422
+    assert client.get("/predictions/latest", params={"limit": 5000}).status_code == 422
+
+
+def test_latest_endpoint_is_503_when_the_log_is_disabled(client: TestClient) -> None:
+    response = client.get("/predictions/latest")
+    assert response.status_code == 503 and "disabled" in response.text
+
+
+def test_a_failing_log_does_not_break_the_prediction(
+    service: ModelService, make_payload: Payload, caplog: pytest.LogCaptureFixture
+) -> None:
+    class BrokenLog:
+        def log(self, record: object) -> None:
+            raise RuntimeError("disk full")
+
+        def close(self) -> None:
+            pass
+
+    app = create_app(loader=lambda: service)
+    app.state.prediction_log = BrokenLog()
+    app.dependency_overrides[get_service] = lambda: service
+    response = TestClient(app).post("/predict", json=make_payload())
+    assert response.status_code == 200 and 0 <= response.json()["risk"] <= 1
+    assert "could not write the prediction log" in caplog.text
+
+
+def test_lifespan_opens_and_closes_the_log(service: ModelService, make_payload: Payload) -> None:
+    log = PredictionLog(":memory:")
+    closed: list[bool] = []
+    original_close = log.close
+    log.close = lambda: (closed.append(True), original_close())  # type: ignore[method-assign]
+    with TestClient(create_app(loader=lambda: service, log_factory=lambda: log)) as client:
+        assert client.post("/predict", json=make_payload()).status_code == 200
+        assert len(client.get("/predictions/latest").json()) == 1
+    assert closed == [True]
