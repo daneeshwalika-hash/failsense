@@ -290,3 +290,24 @@ The alpha of Ridge and Lasso is a tie. Time-series features and boosting come on
   fitted model, not a tool for choosing features.
 - **Not done yet:** Q2 (classes 0–4), anomaly detection (Q4), the LLM report (Q5), the API and dashboard.
   Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
+
+## 10. Unsupervised view of the training trucks (PCA, KMeans; 09.11)
+
+Descriptive analysis on the 23,550 **training** trucks (last readout, the 239 model inputs;
+`make unsupervised`, `notebooks/02_unsupervised.ipynb`, files `reports/unsupervised_*`). Labels
+only colour the map and cross-tabulate the clusters. These are not predictive numbers.
+
+| Finding | Value |
+|---|---|
+| Variance in PC1 / PC2 | 22.4 % / 15.0 % (without `log1p` of the counters: 14.7 % / 10.8 %) |
+| Components for 90 % of the variance | 50 of 239 inputs |
+| Best k by silhouette (sample 5,000) | k = 2, silhouette 0.27 (k >= 3: about 0.08-0.13; stable over 4 seeds, 0.26-0.27) |
+| Repair rate cluster 0 / cluster 1 | 5.4 % (n = 4,840) / 10.7 % (n = 18,710); overall 9.6 % |
+| Normalised mutual information cluster vs repaired | 0.007 |
+
+The repaired trucks lie inside the dense blob of the others, so the first two components do
+not separate them. The two clusters are mainly a **truck configuration split** (`Spec_0 =
+Cat0`: 90 % of cluster 1 vs 50 % of cluster 0), not a wear or failure split. Unsupervised
+grouping therefore does not replace the supervised model; it is a descriptive tool (fleet
+segments). Caveat: a repaired truck's last readout lies just before its repair, a non-repaired
+truck's at the end of observation, which differs from the random cut-offs of the validation.

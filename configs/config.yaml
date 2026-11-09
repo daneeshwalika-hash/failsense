@@ -148,3 +148,11 @@ api:
   summary_key: deployment_choice   # holds calibrator (sigmoid slope/intercept) and threshold
   host: 127.0.0.1
   port: 8000
+
+unsupervised:
+  # Step 09.11: PCA map and KMeans on the TRAINING trucks (one row per truck, last readout).
+  # Labels are used only to colour the map and to cross-tabulate clusters.
+  variance_kept: 0.90          # PCA components kept for KMeans: smallest number with >= 90 %
+  ks: [2, 3, 4, 5, 6, 8, 10]   # numbers of clusters to compare
+  silhouette_sample_size: 5000 # silhouette on a random subsample (full O(n^2) is too slow)
+  mlflow_experiment: failsense-unsupervised
