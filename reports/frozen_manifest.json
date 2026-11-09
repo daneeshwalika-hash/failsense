@@ -1,0 +1,200 @@
+{
+  "created_at": "2026-11-09T12:38:47+00:00",
+  "code_commit": "a23349c572b32962ea7bd941d45cee39c65e6826",
+  "uv_lock_sha256": "b46f2f623d923a1db6c084058ac4f28f029743631458662a4de93356be2dd890",
+  "config": {
+    "seed": 42,
+    "labels": {
+      "class_bounds": [
+        48,
+        24,
+        12,
+        6
+      ]
+    },
+    "features": {
+      "top_fraction": 0.2
+    },
+    "sampling": {
+      "n_cutoffs_per_vehicle": 5,
+      "seed": 42
+    },
+    "cv": {
+      "n_splits": 5,
+      "seed": 42
+    },
+    "cost": {
+      "matrix": [
+        [
+          0,
+          7,
+          8,
+          9,
+          10
+        ],
+        [
+          200,
+          0,
+          7,
+          8,
+          9
+        ],
+        [
+          300,
+          200,
+          0,
+          7,
+          8
+        ],
+        [
+          400,
+          300,
+          200,
+          0,
+          7
+        ],
+        [
+          500,
+          400,
+          300,
+          200,
+          0
+        ]
+      ],
+      "binary": {
+        "alert_class": 1
+      }
+    },
+    "q2": {
+      "target_class_counts": [
+        4910,
+        16,
+        14,
+        30,
+        76
+      ],
+      "n_bootstrap": 500,
+      "mlflow_experiment": "failsense-q2-classes"
+    },
+    "rul": {
+      "cap": 125,
+      "mlflow_experiment": "failsense-rul",
+      "rolling_windows": [
+        5,
+        15
+      ],
+      "ridge_alpha": 1.0,
+      "lightgbm": {
+        "n_estimators": 300,
+        "learning_rate": 0.05,
+        "num_leaves": 15,
+        "min_child_samples": 50,
+        "subsample": 0.8,
+        "subsample_freq": 1,
+        "colsample_bytree": 0.8,
+        "reg_lambda": 1.0
+      }
+    }
+  },
+  "config_sha256": "5296ca7dfbe6120c5ecf8359f67a07b6c72ebef9c4e352fa96ce3608c0ba8f18",
+  "frozen_files": {
+    "q1_model/MLmodel": "a3df8692913f75fb6c00c92031fa1478741f163c80069f16078766247aee8b81",
+    "q1_model/conda.yaml": "6f275dd31b62da9590cf2f30e07f41529e60b7fd1129e781bc4090a36bbc1785",
+    "q1_model/input_example.json": "911f909ef7ea51023616110e2a873e255129aeda1e7f78d679864dcf63c63e47",
+    "q1_model/model.skops": "4455aab692355c9a379d085b2375b2e9000a0af7f61a4c45516413bf907a59da",
+    "q1_model/python_env.yaml": "256f7312feaa54412c4d3d6bf67efdc42f4243e630a635342252ba99aceb5106",
+    "q1_model/registered_model_meta": "00675491dd2f3909749821774e9ab1e909c54493f63a5da0fe3fcb685b3173c8",
+    "q1_model/requirements.txt": "12150853b11b204eecff4fb5caf6395df60dc21cae26d23cd766d06900ea82a9",
+    "q1_model/serving_input_example.json": "29313fe960669774de8426d5e78d24b935e947dd070b4bdfac898bec8a069b87",
+    "q2_meta.json": "b9850dd4b2fdc5ef89cfed4fce51be221ba1d245fe61c51c5f266472598534d5",
+    "q2_model.skops": "733a9628b84eb5f30075c4b09186a9f28d89ce41f64dbff7e968ab3a2262b46f",
+    "rul_lightgbm.skops": "a286bfbec6b0c21514a640d9fbb1851081e852b27ea8cc34af3ff5de57a4dc0b",
+    "rul_meta.json": "a85962bfde8115c1a500d48823d41f8c0aed82bb22ebafa48c1ef81cd2465f28",
+    "rul_ridge.skops": "51d9bb4c516c78a46ab7d45df2ffa4b852ead0881fc091033e0fff6489c50418"
+  },
+  "source_files": {
+    "reports/registry_q1.json": "2fab0ae19499f8a445a531c143e63b1693db0465b999964d2e93096a6096a9b1",
+    "reports/calibration_q1_summary.json": "fa75513972f15872ac47f21665fade260e94c8f6952717d3e928a8684020d726"
+  },
+  "test_files": {
+    "scania_readouts": {
+      "path": "data/raw/scania/test_operational_readouts.csv",
+      "sha256": "81f2709cd339e0ff561f5fd3188d7f431680e32400bd788814880d7759615ba1"
+    },
+    "scania_specifications": {
+      "path": "data/raw/scania/test_specifications.csv",
+      "sha256": "40ac8a111f6d5b416107ec1786f639766ecf1293a1c9c0c0dbf24f14c1c5d0e7"
+    },
+    "scania_labels": {
+      "path": "data/raw/scania/test_labels.csv",
+      "sha256": "60f923051d4ba1bef4c81166cf9e8ca01daf3b7a29c73016c6f48a23dcfa0223"
+    },
+    "cmapss_test": {
+      "path": "data/raw/cmapss/test_FD001.txt",
+      "sha256": "3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851"
+    },
+    "cmapss_rul": {
+      "path": "data/raw/cmapss/RUL_FD001.txt",
+      "sha256": "a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca"
+    }
+  },
+  "q1": {
+    "model_uri": "models:/failsense-q1@candidate",
+    "model_version": "1",
+    "run_id": "a40dd5b3a89b4b38b63a92bcf5fe09d8",
+    "calibrator": {
+      "kind": "sigmoid",
+      "slope": 0.5258518583100283,
+      "intercept": -1.957385934102395,
+      "logit_clip_eps": 1e-06
+    },
+    "threshold": 0.0353238553943719,
+    "n_input_columns": 239,
+    "folder": "q1_model"
+  },
+  "q2": {
+    "n_train_rows": 117031,
+    "prior_train": [
+      0.9723833855986875,
+      0.013423793695687468,
+      0.006681990241901719,
+      0.003204279208073075,
+      0.004306551255650212
+    ],
+    "prior_target": [
+      0.9730479587792311,
+      0.0031708283789139914,
+      0.0027744748315497426,
+      0.005945303210463734,
+      0.015061434799841459
+    ]
+  },
+  "rul": {
+    "cap": 125,
+    "rolling_windows": [
+      5,
+      15
+    ],
+    "n_train_engines": 100,
+    "mean_rul_training": 86.82928602588338
+  },
+  "libraries": {
+    "python": "3.12.15",
+    "numpy": "2.5.4",
+    "pandas": "3.1.0",
+    "scikit-learn": "1.9.1",
+    "xgboost-cpu": "3.4.1",
+    "lightgbm": "4.7.0",
+    "mlflow": "3.17.2",
+    "skops": "0.16.0"
+  },
+  "decisions": [
+    "RUL model: LightGBM + rolling mean/std; baselines: Ridge (raw) and the mean predictor",
+    "RUL primary reference: the RUL capped at rul.cap; secondary: raw RUL and the NASA score",
+    "Q2 target mix: the class mix published for the validation, never the test counts (ADR 0004)",
+    "Q1 headline: primary cost mapping first, literal next to it; never / always alert baselines",
+    "Not evaluated on test: MLP, LightGBM for Q1, anomaly detectors and feature, the challenger",
+    "Results are reported as they are: no re-tuning and no second run"
+  ],
+  "note": "trained on training data only; no test file was parsed, nothing evaluated on test"
+}

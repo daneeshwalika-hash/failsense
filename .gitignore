@@ -37,3 +37,4 @@ CLAUDE.md
 # --- Runtime logs (DuckDB prediction log) ---
 logs/
 coverage.xml
+artifacts/
