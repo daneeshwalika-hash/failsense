@@ -88,10 +88,12 @@ COPY --chown=app:app prompts ./prompts
 COPY --chown=app:app models ./models
 COPY --chown=app:app reports/calibration_q1_summary.json reports/registry_q1.json ./reports/
 
+# GIT_PYTHON_REFRESH=quiet: MLflow tries to record the git SHA; the slim image has no git executable
 ENV PATH="/app/.venv/bin:$PATH" \
     FAILSENSE_ROOT=/app \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    GIT_PYTHON_REFRESH=quiet
 
 USER app
 EXPOSE 8000

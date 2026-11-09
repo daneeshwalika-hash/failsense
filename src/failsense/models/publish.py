@@ -25,6 +25,7 @@ import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
+from mlflow.models import infer_signature
 from mlflow.tracking import MlflowClient
 
 from failsense.config import load_config, resolve_path
@@ -72,8 +73,11 @@ def register_pipeline(
     mlflow.set_experiment(experiment)
     with mlflow.start_run(run_name=f"publish_{name}_{alias}"):
         mlflow.set_tag("source", source)
+        # Inputs only: the API calls predict_proba on the sklearn model, so the integer class-label
+        # output that MLflow would infer from predict() is not part of what is served (and inferring
+        # it logs the warning "Inferred schema contains integer column(s)").
         info = mlflow.sklearn.log_model(
-            pipeline, name="model", input_example=probe,
+            pipeline, name="model", input_example=probe, signature=infer_signature(probe),
             skops_trusted_types=TRUSTED_TYPES, registered_model_name=name,
         )  # fmt: skip
         version = str(info.registered_model_version)

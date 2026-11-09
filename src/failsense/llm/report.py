@@ -172,7 +172,8 @@ def build_user_message(data: ReportInput, level: RiskLevel) -> str:
         f"Alarm: {'ja' if data.alert else 'nein'}",
         f"risk_level (vorgegeben): {level}",
         "",
-        "Wichtigste Faktoren (Name | Beschreibung | Wert | Wirkung auf das Risiko):",
+        "Wichtigste Faktoren (Name | Beschreibung | Wert | Wirkung auf das Risiko; die Zahl in "
+        "Klammern ist ein Beitrag in Log-Odds, KEINE Prozentzahl):",
     ]
     for factor in data.factors:
         direction = "erhöht" if factor.contribution > 0 else "senkt"
@@ -198,6 +199,30 @@ def report_texts(report: MaintenanceReport) -> str:
                      *(r.explanation for r in report.reasons)])  # fmt: skip
 
 
+_PERCENT = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:%|Prozent\b)")
+PERCENT_TOLERANCE = 0.06  # the facts are given with one decimal; allow its rounding
+
+
+def allowed_percentages(data: ReportInput) -> list[float]:
+    """The only percentages a report may quote: risk, average risk and alert threshold."""
+    return [100 * data.risk, 100 * data.baseline_risk, 100 * data.threshold]
+
+
+def ungrounded_percentages(text: str, data: ReportInput) -> list[str]:
+    """Percentages in ``text`` that are not one of the given facts (e.g. a computed difference).
+
+    A real LLM answer said "0.3 % über der Alarmschwelle" for 4.4 % vs. 3.5 % and described log-odds
+    contributions as percent: both are numbers that appear in no fact.
+    """
+    allowed = allowed_percentages(data)
+    bad = []
+    for raw in _PERCENT.findall(text):
+        value = float(raw.replace(",", "."))
+        if not any(abs(value - a) <= PERCENT_TOLERANCE for a in allowed):
+            bad.append(raw)
+    return bad
+
+
 def validate_report(report: MaintenanceReport, data: ReportInput, level: RiskLevel) -> list[str]:
     """Problems of a report against the facts it must stick to (empty list = fine)."""
     problems = []
@@ -212,6 +237,9 @@ def validate_report(report: MaintenanceReport, data: ReportInput, level: RiskLev
         problems.append(f"risk_level {report.risk_level!r} differs from the computed {level!r}")
     if not looks_german(report_texts(report)):
         problems.append("the text does not look German")
+    invented = ungrounded_percentages(report_texts(report), data)
+    if invented:
+        problems.append(f"percentage(s) that are not among the given facts: {invented}")
     return problems
 
 

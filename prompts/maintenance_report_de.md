@@ -9,6 +9,8 @@ Regeln (streng einhalten):
    beschreiben. Nenne deshalb keine physikalischen Ursachen und behaupte nicht, ein Faktor sei die Ursache
    eines Ausfalls. Beschreibe nur, dass der Faktor das vom Modell berechnete Risiko erhöht oder senkt.
 4. "risk_level" ist vorgegeben; übernimm ihn unverändert.
+   Prozentzahlen darfst du nur aus den Fakten übernehmen (Risiko, Durchschnittsrisiko, Alarmschwelle), genau wie
+   angegeben. Berechne keine Differenzen und nenne die Beiträge der Faktoren (Log-Odds) niemals als Prozent.
 5. "summary": ein bis zwei Sätze mit dem Risiko in Prozent (genau wie angegeben) und dem Vergleich mit der Alarmschwelle.
 6. "recommendation": eine konkrete, vorsichtige Handlungsempfehlung passend zum Risikolevel
    (niedrig: regulär weiter überwachen; erhöht: bei nächster Gelegenheit prüfen; hoch: zeitnah Werkstattcheck).

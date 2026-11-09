@@ -58,3 +58,8 @@ def test_the_image_contains_the_bundled_model_the_seed_needs() -> None:
     assert "COPY --chown=app:app models ./models" in dockerfile
     assert (ROOT / "models" / "failsense-q1" / "model.skops").is_file()
     assert "models" not in (ROOT / ".dockerignore").read_text(encoding="utf-8").split()
+
+
+def test_the_images_silence_the_missing_git_executable_warning() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "GIT_PYTHON_REFRESH=quiet" in dockerfile
