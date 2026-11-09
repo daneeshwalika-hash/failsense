@@ -1,8 +1,21 @@
 # Plan: one frozen evaluation on the test splits (Q1, Q2, RUL)
 
-**Status: plan only. Nothing here has been run, and no test file has been read.** The run needs Daneesh's
-separate approval. This document says what is frozen, what still has to be frozen, and how the single run is
-protected against a second look.
+**Status (09.11.2026, evening): the evaluation script is written and tested on fixtures; the freeze of 09.11 is
+superseded; nothing has been run on test and no test file was parsed.** The test run needs Daneesh's separate
+approval.
+
+## 0. Order of events (decided 09.11)
+
+| When | Step | State |
+|---|---|---|
+| 09.11 | Plan, six decisions, freeze code, evaluation script + fixture tests (`failsense.evaluate_test`, `scripts/evaluate_test_once.py`) | done |
+| **Sat 14.11** | 1. **Re-freeze on the FINAL commit** (`make freeze --replace`): the manifest now also hashes the evaluation script, `compose.yaml`, `Dockerfile`, `.env.example`, the prompt and the bundled model. No exemptions. The differences to the 09.11 manifest are reported. | open |
+| **Sat 14.11** | 2. **Single test run** (`uv run python scripts/evaluate_test_once.py --approved-single-run`), only with Daneesh's approval. | open |
+| Sun 15.11 | Release: clean-clone test, tag `v1.0`, public repo (each only on Daneesh's word) | open |
+
+The manifest of 09.11 (`reports/frozen_manifest.json`) no longer verifies on purpose: code and config changed after it
+(compose fix, LLM grounding, signature, seed step, the evaluation script). The re-freeze replaces it; the evaluation
+script refuses to run until `make freeze-verify` is clean.
 
 ## 1. Principle
 
@@ -40,7 +53,7 @@ result is reported whatever it is; nothing is tuned afterwards.
    file, Q2 and RUL models, config sections used, the cost matrix), the SHA-256 of the **five** test files (SCANIA readouts, specifications, labels; C-MAPSS `test_FD001.txt`,
    `RUL_FD001.txt`; hashed only: the bytes are not parsed), the library versions (`uv.lock` hash), and the decisions of section 5.
 
-## 4. The evaluation script (`scripts/evaluate_test_once.py`, to be written after this plan is approved)
+## 4. The evaluation script (`failsense.evaluate_test`, entry `scripts/evaluate_test_once.py`; written 09.11)
 
 * Refuses to start unless (`failsense.freeze.verify_manifest`): the flag `--approved-single-run` is given, the working tree is clean and no code or
   config file (`src/`, `configs/`, `pyproject.toml`, `uv.lock`, the registry and calibration files) differs from the
@@ -63,9 +76,10 @@ result is reported whatever it is; nothing is tuned afterwards.
   with a paired bootstrap of the difference to Ridge (RUL compared with a baseline). 100 engines: the interval is
   wide and is reported.
 * Writes `reports/test_evaluation_final.json`, one MLflow run tagged `stage = test, single run`, and the sections
-  for `docs/results.md`. **No other test access exists in the repository** (a test asserts that the test paths are
-  read only by this script).
-* Script tests (mini fixtures only, never the real test files): refuses without the flag, with a dirty tree, with a
+  for `docs/results.md`. **No other test access exists in the repository** (a test asserts that only `freeze` (hashing) and
+  `evaluate_test` touch the config's test paths; another asserts that the SCANIA test files are read as RAW csv,
+  never from the Parquet copies).
+* Script tests (22, mini fixtures only, never the real test files; the metrics are checked by hand): refuses without the flag, with a dirty tree, with a
   changed hash, with an existing lock; the lock is created before the first read; the metrics match hand-computed
   values on a tiny example.
 

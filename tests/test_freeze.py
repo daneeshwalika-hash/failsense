@@ -61,7 +61,7 @@ def repo(tmp_path: Path) -> dict[str, Any]:
     for rel, text in {
         "src/failsense/x.py": "x = 1\n", "configs/config.yaml": "seed: 42\n",
         "pyproject.toml": "[project]\n", "uv.lock": "lock\n", "README.md": "readme\n",
-        "reports/registry_q1.json": "{}", "reports/calibration_q1_summary.json": "{}",
+        **dict.fromkeys(fz.HASHED_FILES, "x"),
     }.items():  # fmt: skip
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text)
@@ -167,6 +167,23 @@ def test_a_committed_code_change_after_the_freeze_is_found_but_docs_may_change(
 def test_a_missing_manifest_names_the_make_target(repo: dict[str, Any]) -> None:
     Path(repo["config"]["freeze"]["manifest"]).unlink()
     assert "make freeze" in fz.verify_manifest(repo["config"], repo["root"])[0]
+
+
+def test_the_evaluation_script_compose_and_config_files_are_hashed_without_exemption(
+    repo: dict[str, Any],
+) -> None:
+    hashed = set(repo["manifest"]["source_files"])
+    for rel in ("scripts/evaluate_test_once.py", "compose.yaml", "Dockerfile", ".env.example",
+                "prompts/maintenance_report_de.md", "models/failsense-q1/model.skops"):  # fmt: skip
+        assert rel in hashed, rel
+    root = repo["root"]
+    (root / "compose.yaml").write_text("changed")
+    assert any(
+        "source file changed: compose.yaml" in p for p in fz.verify_manifest(repo["config"], root)
+    )
+    git(root, "commit", "-qam", "compose")
+    assert any("code changed since the freeze: compose.yaml" in p
+               for p in fz.verify_manifest(repo["config"], root))  # fmt: skip
 
 
 def test_the_five_test_files_come_from_the_config(repo: dict[str, Any]) -> None:

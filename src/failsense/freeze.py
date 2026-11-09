@@ -35,10 +35,21 @@ from failsense.config import find_repo_root, load_config, resolve_path
 
 logger = logging.getLogger(__name__)
 
-CODE_PATHS = (
-    "src", "configs", "pyproject.toml", "uv.lock", "reports/registry_q1.json",
+# Files whose SHA-256 is stored one by one in the manifest (no exemptions).
+HASHED_FILES = (
+    "reports/registry_q1.json",
     "reports/calibration_q1_summary.json",
-)  # fmt: skip
+    "scripts/evaluate_test_once.py",
+    "compose.yaml",
+    "Dockerfile",
+    ".env.example",
+    "prompts/maintenance_report_de.md",
+    "models/failsense-q1/model.skops",
+    "models/failsense-q1/source.json",
+    "models/failsense-q1/trusted_types.json",
+)
+# Paths whose change since the freeze commit refuses the evaluation (documentation may change).
+CODE_PATHS = ("src", "configs", "pyproject.toml", "uv.lock", "models", "prompts", *HASHED_FILES)
 CONFIG_SECTIONS = ("seed", "labels", "features", "sampling", "cv", "cost", "q2", "rul")
 LIBRARIES = (
     "python", "numpy", "pandas", "scikit-learn", "xgboost-cpu", "lightgbm", "mlflow", "skops",
@@ -268,7 +279,7 @@ def assemble_manifest(
         "config": config_snapshot(config),
         "config_sha256": config_hash(config),
         "frozen_files": hash_tree(out),
-        "source_files": {rel: sha256_file(root / rel) for rel in CODE_PATHS[4:]},
+        "source_files": {rel: sha256_file(root / rel) for rel in HASHED_FILES},
         # the test files are only hashed (bytes), never parsed
         "test_files": {
             name: {"path": str(path.relative_to(root)), "sha256": sha256_file(path)}
