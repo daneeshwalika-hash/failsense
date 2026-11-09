@@ -536,6 +536,7 @@ name = "failsense"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "imbalanced-learn" },
     { name = "lightgbm" },
     { name = "matplotlib" },
@@ -548,11 +549,13 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "shap" },
+    { name = "uvicorn" },
     { name = "xgboost-cpu" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "jupyter" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -561,6 +564,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.162.0" },
     { name = "imbalanced-learn", specifier = ">=0.14.2" },
     { name = "lightgbm", specifier = ">=4.7.0" },
     { name = "matplotlib", specifier = ">=3.11.2" },
@@ -573,11 +577,13 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "shap", specifier = ">=0.54.1" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
     { name = "xgboost-cpu", specifier = ">=3.4.1" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "pre-commit", specifier = ">=4.7.0" },
     { name = "pytest", specifier = ">=9.1.1" },

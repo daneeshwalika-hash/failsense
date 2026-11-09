@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate explain matched-check rul-baseline analysis class-mix test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve explain matched-check rul-baseline analysis class-mix test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -42,6 +42,9 @@ calibrate:  ## Calibrate failsense-q1@candidate and choose the alert threshold b
 
 matched-check:  ## One-time check matched vs k5 training sample on the OFFICIAL validation (PR-AUC + cross-fitted cost, bootstrap)
 	uv run python -m failsense.models.matched_check
+
+serve:  ## Start the prediction API (loads failsense-q1@candidate; docs at /docs)
+	scripts/serve.sh
 
 explain:  ## SHAP, permutation and gain importance of failsense-q1@candidate on the official validation (needs make calibrate)
 	uv run python -m failsense.explain.explain_q1

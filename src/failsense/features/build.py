@@ -282,3 +282,44 @@ def add_histogram_features(
         raise ValueError(f"df already contains engineered columns: {clash[:5]}")
     logger.info("Added %d histogram features to %d rows", len(new), len(df))
     return pd.concat([df, pd.DataFrame(new, index=df.index)], axis=1)
+
+
+# --- the one feature builder shared by training, validation and the API -----------
+def build_model_features(
+    readouts: pd.DataFrame,
+    rows_index: pd.Index,
+    counter_cols: Sequence[str] = (),
+    hist_groups: Mapping[str, Sequence[str]] | None = None,
+    top_fraction: float = 0.2,
+) -> pd.DataFrame:
+    """The readout rows at ``rows_index`` with counter deltas/rates and histogram features.
+
+    This is the single place where model features are built. Training
+    (``frame_from_sampled``), the validation split (``build_last_readout_frame``) and the
+    prediction API all call it, so a feature can never be computed differently in
+    production than in training. It attaches no label and no specification.
+
+    Deltas are computed on the **full** ``readouts`` (all rows of a truck, ascending
+    ``time_step``) and the rows ``rows_index`` are selected afterwards. Every engineered
+    feature uses at most the row itself and the ONE readout immediately before it of the
+    same truck (no rolling or cumulative feature). A caller with only two readouts of a
+    truck (the API) therefore gets the same values as the full history would give.
+
+    Args:
+        readouts: Readouts with ``vehicle_id``, ``time_step`` and the raw columns.
+        rows_index: Index labels of the rows to return (a subset of ``readouts.index``).
+        counter_cols, hist_groups, top_fraction: Engineered features, as in training.
+            Empty ``counter_cols`` / ``hist_groups`` skip that feature family.
+
+    Returns:
+        The selected rows (in ``rows_index`` order) with the new columns.
+    """
+    frame = readouts.loc[rows_index].copy()
+    if counter_cols:
+        key_and_counters = readouts[[VEHICLE_COL, TIME_COL, *counter_cols]]
+        with_deltas = add_counter_deltas(key_and_counters, counter_cols)
+        new_cols = [c for c in with_deltas.columns if c not in key_and_counters.columns]
+        frame = frame.join(with_deltas.loc[rows_index, new_cols])
+    if hist_groups:
+        frame = add_histogram_features(frame, hist_groups, top_fraction)
+    return frame

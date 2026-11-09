@@ -241,3 +241,46 @@ def tiny_pipeline() -> tuple[Any, pd.DataFrame, np.ndarray]:
     )  # fmt: skip
     pipeline = build_model_pipeline(model, ["Spec_0"], scaler=None).fit(frame, y)
     return pipeline, frame, y
+
+
+# --- prediction API ---------------------------------------------------------------------
+API_CALIBRATOR = {"kind": "sigmoid", "slope": 0.5, "intercept": -2.0, "logit_clip_eps": 1e-6}
+
+
+@pytest.fixture
+def service(tiny_pipeline: tuple[Any, Any, Any]) -> Any:
+    """Service with the tiny pipeline; its input columns are the tiny frame's columns."""
+    from failsense.api.service import ModelInfo, ModelService
+
+    pipeline, frame, _ = tiny_pipeline
+    return ModelService(
+        pipeline=pipeline,
+        calibrator=API_CALIBRATOR,
+        threshold=0.2,
+        input_columns=list(frame.columns),
+        info=ModelInfo(name="failsense-q1", version="3", alias="candidate"),
+        top_fraction=0.2,
+    )
+
+
+@pytest.fixture
+def make_payload() -> Callable[..., dict[str, Any]]:
+    """Factory for a valid /predict body (full 105-column current readout)."""
+
+    from failsense.data.schema import SPEC_COLUMNS, counter_columns, feature_columns
+
+    def factory(with_previous: bool = True, **overrides: Any) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "vehicle_id": 7,
+            "current": {
+                "time_step": 100.0,
+                **{c: 10.0 + i for i, c in enumerate(feature_columns())},
+            },
+            "specifications": {c: "Cat1" for c in SPEC_COLUMNS},
+        }
+        if with_previous:
+            body["previous"] = {"time_step": 90.0, **{c: 8.0 for c in counter_columns()}}
+        body.update(overrides)
+        return body
+
+    return factory
