@@ -1,0 +1,92 @@
+{
+  "n_train_rows": 117031,
+  "n_validation_trucks": 5046,
+  "prior_train": [
+    0.9723833855986875,
+    0.013423793695687468,
+    0.006681990241901719,
+    0.003204279208073075,
+    0.004306551255650212
+  ],
+  "prior_target": [
+    0.9730479587792311,
+    0.0031708283789139914,
+    0.0027744748315497426,
+    0.005945303210463734,
+    0.015061434799841459
+  ],
+  "prior_target_source": "dataset paper, validation class counts (aggregate)",
+  "oof_log_loss_train": 0.13828864693641663,
+  "validation_log_loss": {
+    "uncorrected": 0.2218981683254242,
+    "corrected": 0.20437334212060818
+  },
+  "constant_baselines": {
+    "always_0": 57400.0,
+    "always_1": 76570.0,
+    "always_2": 68192.0,
+    "always_3": 59616.0,
+    "always_4": 49566.0
+  },
+  "best_constant": "always_4",
+  "decisions": {
+    "uncorrected_expected_cost": {
+      "total_cost": 44280.0,
+      "macro_f1": 0.06031345070684328,
+      "predicted_counts": [
+        687,
+        0,
+        87,
+        338,
+        3934
+      ]
+    },
+    "corrected_expected_cost": {
+      "total_cost": 43871.0,
+      "macro_f1": 0.04822468390141747,
+      "predicted_counts": [
+        569,
+        0,
+        0,
+        5,
+        4472
+      ]
+    },
+    "uncorrected_argmax": {
+      "total_cost": 56930.0,
+      "macro_f1": 0.20222668810289388,
+      "predicted_counts": [
+        5042,
+        0,
+        0,
+        0,
+        4
+      ]
+    }
+  },
+  "paired_bootstrap_cost": {
+    "corrected_vs_uncorrected": {
+      "diff": -409.0,
+      "std": 881.5799621380278,
+      "ci_low": -2296.15,
+      "ci_high": 1179.1499999999999,
+      "share_a_cheaper": 0.658
+    },
+    "corrected_vs_always_4": {
+      "diff": -5695.0,
+      "std": 227.46184313895012,
+      "ci_low": -6140.3,
+      "ci_high": -5273.475,
+      "share_a_cheaper": 1.0
+    },
+    "uncorrected_vs_always_4": {
+      "diff": -5286.0,
+      "std": 916.9913656787935,
+      "ci_low": -6885.575,
+      "ci_high": -3281.275000000001,
+      "share_a_cheaper": 1.0
+    }
+  },
+  "n_bootstrap": 500,
+  "caveat": "validation class mix is used for the correction and the cost is measured on the same trucks: optimistic by construction (ADR 0004); test split untouched"
+}

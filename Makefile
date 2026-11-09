@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard explain matched-check rul-baseline analysis unsupervised class-mix test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard explain matched-check rul-baseline analysis unsupervised class-mix q2 test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -64,6 +64,9 @@ unsupervised:  ## PCA map + KMeans clusters of the training trucks (labels only 
 
 class-mix:  ## Why the calibrated eval set has another class mix than the validation (training data only)
 	uv run python -m failsense.analysis.class_mix
+
+q2:  ## Q2 classes 0-4: multi-class model, prior-shift correction (ADR 0004), 5x5 total cost on the validation (~7 min)
+	uv run python -m failsense.models.q2_classes
 
 test:   ## Run the test suite (no raw data needed)
 	uv run pytest

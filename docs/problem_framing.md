@@ -1089,6 +1089,9 @@ with the class mix **published in the dataset paper** (aggregate numbers, like 1
 never per-row validation labels. The paper's test class counts exist as well; they are not used.
 Alternatives to weigh against it: no correction (report the shift), or class weights.
 
+**Resolved 09.11 ([ADR 0004](adr/0004-q2-prior-shift.md)):** prior-shift correction with the published class mix,
+reported next to the uncorrected model; results in `docs/results.md` section 11.
+
 ### SHAP and permutation importance (06.11, `make explain`)
 
 Model `failsense-q1@candidate`, official validation (5,046 last readouts, 136 positives), test split
