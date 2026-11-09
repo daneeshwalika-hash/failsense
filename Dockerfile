@@ -24,13 +24,14 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # 1) dependencies only: this layer is cached until pyproject.toml / uv.lock change.
-#    --locked: fail if uv.lock is out of date; --no-dev: no pytest/jupyter/ruff in the image.
+#    --locked: fail if uv.lock is out of date; --no-default-groups: no pytest/jupyter/ruff
+#    (dev) and no Streamlit (dashboard) in the API image.
 COPY pyproject.toml uv.lock .python-version README.md ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-default-groups --no-install-project
 
 # 2) the project itself, installed as a normal (non-editable) package.
 COPY src ./src
-RUN uv sync --locked --no-dev --no-editable
+RUN uv sync --locked --no-default-groups --no-editable
 
 # ---- stage 2: slim runtime image ------------------------------------------------------------
 FROM python:3.12-slim AS runtime

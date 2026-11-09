@@ -148,6 +148,19 @@ MLflow stores artifact paths as absolute URIs, hence the second mount at the hos
 `docker compose` with an MLflow server (planned) removes this detail. CI builds the image and
 imports the app inside it.
 
+## Dashboard
+
+```bash
+make serve       # terminal 1: the API
+make dashboard   # terminal 2: Streamlit on http://127.0.0.1:8501
+```
+
+Pick a demo truck (a fixed sample of the **validation** split, never the test split), see the
+calibrated risk, the cost-based alert threshold, the risk of the latest readouts and the
+known outcome. The page never loads the model: every number comes from `POST /predict`
+(`FAILSENSE_API_URL` changes the API address). Streamlit lives in the `dashboard` dependency
+group (installed by `uv sync`, not part of the API image).
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on

@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve explain matched-check rul-baseline analysis unsupervised class-mix test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard explain matched-check rul-baseline analysis unsupervised class-mix test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -45,6 +45,9 @@ matched-check:  ## One-time check matched vs k5 training sample on the OFFICIAL 
 
 serve:  ## Start the prediction API (loads failsense-q1@candidate; docs at /docs)
 	scripts/serve.sh
+
+dashboard:  ## Start the Streamlit dashboard (needs `make serve` running)
+	scripts/dashboard.sh
 
 explain:  ## SHAP, permutation and gain importance of failsense-q1@candidate on the official validation (needs make calibrate)
 	uv run python -m failsense.explain.explain_q1
