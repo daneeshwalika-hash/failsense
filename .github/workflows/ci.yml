@@ -44,8 +44,8 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
-      - name: Tests
-        run: uv run pytest -q
+      - name: Tests with coverage
+        run: uv run pytest -q --cov --cov-report=term
 
   # The API image must build from a clean checkout and import its heavy dependencies
   # (libgomp1 for LightGBM/XGBoost, the app itself). The model is not part of the image.

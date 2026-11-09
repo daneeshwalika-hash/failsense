@@ -1,0 +1,9 @@
+{
+  "model_name": "failsense-q1",
+  "model_version": "1",
+  "threshold": 0.0353238553943719,
+  "n": 5046,
+  "mean_risk": 0.04275470703481379,
+  "alert_rate": 0.597106619104241,
+  "source": "official validation, last readout per truck (no test data)"
+}

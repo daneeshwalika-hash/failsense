@@ -1,4 +1,4 @@
-"""FastAPI app: ``/health``, ``POST /predict``, ``POST /explain`` and ``GET /predictions/latest``.
+"""FastAPI app: health, ``/predict``, ``/predict/batch``, ``/explain``, ``/predictions/latest``.
 
 The model is loaded once at startup (lifespan) from the registry alias named in the config
 and kept in ``app.state``. Routes get it through the ``get_service`` dependency, which tests
@@ -17,6 +17,8 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
 from failsense.api.prediction_log import MAX_LATEST, PredictionLog, PredictionRecord
 from failsense.api.schemas import (
+    BatchRequest,
+    BatchResponse,
     ExplainRequest,
     ExplainResponse,
     FactorOut,
@@ -119,6 +121,34 @@ def create_app(
         )
         _write_log(http_request, request, response)
         return response
+
+    @app.post("/predict/batch", response_model=BatchResponse)
+    def predict_batch(
+        request: BatchRequest,
+        http_request: Request,
+        service: ModelService = Depends(get_service),  # noqa: B008
+    ) -> BatchResponse:
+        """Calibrated risk and alert for up to 100 independent requests, one model call.
+
+        Same rules as `/predict` for every item; one invalid item rejects the whole request (422,
+        the error names the item index). Answers are in the order of the items and every item is
+        written to the prediction log.
+        """
+        predictions = service.predict_batch(
+            [(i.current, i.previous, i.specifications) for i in request.items]
+        )
+        results = []
+        for item, prediction in zip(request.items, predictions, strict=True):
+            response = PredictResponse(
+                risk=prediction.risk,
+                alert=prediction.alert,
+                threshold=service.threshold,
+                model_name=service.info.name,
+                model_version=service.info.version,
+            )
+            _write_log(http_request, item, response)
+            results.append(response)
+        return BatchResponse(results=results)
 
     @app.post("/explain", response_model=ExplainResponse)
     def explain(

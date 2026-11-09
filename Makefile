@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -54,6 +54,15 @@ dashboard:  ## Start the Streamlit dashboard (needs `make serve` running)
 
 simulate:  ## Replay validation readouts to the running API, 1 per second (see --help for drift)
 	uv run python scripts/simulate_stream.py --max-readings 200
+
+drift-reference:  ## Risks of the deployed model on the validation last readouts = reference for the drift check
+	uv run python -m failsense.monitoring.drift reference
+
+drift-check:  ## Compare the API's recent predictions with the reference (PSI + KS); exit 0 ok, 1 warning, 2 alert, 3 too few rows
+	uv run python -m failsense.monitoring.drift check
+
+coverage:  ## Test suite with a coverage report (terminal + coverage.xml)
+	uv run pytest -q --cov --cov-report=term --cov-report=xml
 
 explain:  ## SHAP, permutation and gain importance of failsense-q1@candidate on the official validation (needs make calibrate)
 	uv run python -m failsense.explain.explain_q1
