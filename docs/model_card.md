@@ -74,7 +74,12 @@ random ranking (Q4); a neural network, LightGBM and random forest are not better
 ## 7. Caveats and recommendations
 
 * **Monitoring:** `make drift-check` compares the answered risks with the validation reference (PSI + KS). It
-  misses small shifts (a x3 scaling of the counters was not flagged with 200 rows) and sees no input drift.
+  **misses a x3 scaling of the counters with 200 rows** (PSI 0.075, KS p 0.012, although the alert rate rose
+  from 55 % to 70 %); only x10 and above were flagged. It sees output drift only, no input drift, and no
+  labels exist in production, so a loss of accuracy is invisible. Evidently was considered and rejected (ADR 0006).
+* **Other limits of the same project:** the classes 0-4 model (Q2) does **not** resolve the urgency (88 % of
+  healthy trucks and all failures are put into class 4); the anomaly detectors (Q4) are close to a random
+  ranking; the German report has not been produced by a real LLM yet.
 * **Before relying on the numbers:** evaluate once on the test split, estimate real workshop costs with the
   service department (the matrix is the challenge's, not this fleet's), and re-check calibration on recent
   labelled data.
