@@ -415,3 +415,30 @@ trucks, 136 positives, prevalence 0.027), test split untouched.
   than "abnormality"). Nothing was re-registered: the API would also have to serve the detector. The
   honest reading is "a small, unconfirmed gain"; it would need the Q1 evaluation protocol (paired folds on
   the validation-like set) before it is built into the model.
+
+## 13. Serving, monitoring and test coverage (09.11)
+
+* **API:** `/health`, `/predict`, `/predict/batch` (up to 100 independent items, one model call, identical to
+  the single answers; a test compares them), `/explain` (SHAP factors in calibrated log-odds, optional German
+  report), `/predictions/latest`. Every served prediction is written to a DuckDB log.
+* **Drift check** (`make drift-reference`, `make drift-check`, ADR 0006). Reference: the deployed model
+  (`failsense-q1` v1) on the 5,046 validation last readouts: mean risk 4.3 %, **59.7 % of the trucks above the
+  alert threshold 0.0353**. A stream of 200 validation trucks (last readout, `simulate_stream.py --tail 1`):
+
+| Counters scaled by | PSI | KS p-value | Mean risk | Alert rate | Status |
+|---|---|---|---|---|---|
+| 1 (no drift) | 0.029 | 0.22 | 4.1 % | 55.0 % | ok |
+| 3 | 0.075 | 0.012 | 4.7 % | 69.5 % | **ok (missed)** |
+| 10 | 0.114 | 0.0035 | 4.7 % | 71.0 % | alert |
+| 30 | 0.143 | 0.0008 | 4.8 % | 73.5 % | alert |
+| 100 | 0.147 | 0.0001 | 4.8 % | 74.0 % | alert |
+
+  The check is quiet without drift and fires from a x10 shift of the counters, but it **misses a x3 shift**
+  that already moves the alert rate by 15 points: with 200 rows and a model that is fairly insensitive to the
+  counter scale, output drift is a weak detector. It does not see input changes that leave the risk alone, and
+  a drift of the risk is not a loss of accuracy (there are no production labels).
+* **Test coverage** (`make coverage`, also printed in CI): 986 tests, **83 % line + branch coverage** of
+  `src/failsense`. Lowest: the long-running `run()` entry points of the analysis scripts (class mix, matched
+  check, explain, calibrate, anomaly: 39-65 %, they are run by hand and their helpers are tested) and
+  `dashboard/app.py`, which shows 0 % only because Streamlit's headless `AppTest` executes it outside
+  coverage's tracing; it is tested (30 tests of the page).

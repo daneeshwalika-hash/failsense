@@ -146,6 +146,19 @@ class ExplainRequest(PredictRequest):
     )
 
 
+MAX_BATCH_SIZE = 100
+
+
+class BatchRequest(BaseModel):
+    """Several independent prediction requests (each with its own optional ``previous``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PredictRequest] = Field(
+        min_length=1, max_length=MAX_BATCH_SIZE, description=f"1 to {MAX_BATCH_SIZE} requests."
+    )
+
+
 class PredictResponse(BaseModel):
     """Calibrated risk and the alert decision. The raw model score is never returned."""
 
@@ -186,6 +199,12 @@ class ExplainResponse(PredictResponse):
     report: ReportOut | None = Field(
         default=None, description="Only when the request had with_report = true."
     )
+
+
+class BatchResponse(BaseModel):
+    """One answer per request item, in the same order."""
+
+    results: list[PredictResponse]
 
 
 class HealthResponse(BaseModel):

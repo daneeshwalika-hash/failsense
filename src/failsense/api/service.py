@@ -185,6 +185,33 @@ class ModelService:
         )  # fmt: skip
         return result
 
+    def predict_batch(
+        self,
+        items: Sequence[
+            tuple[Mapping[str, float | None], Mapping[str, float | None] | None, Mapping[str, str]]
+        ],
+    ) -> list[Prediction]:
+        """Calibrated risks of several readouts with ONE pipeline call (same as ``predict``).
+
+        Every item is ``(current, previous, specifications)``; each ``previous`` must be the readout
+        immediately before its own ``current`` (items are independent trucks or readouts).
+
+        Raises:
+            ValueError: If ``items`` is empty.
+        """
+        if not items:
+            raise ValueError("items must not be empty")
+        inputs = pd.concat([self.build_inputs(c, p, s) for c, p, s in items], ignore_index=True)
+        scores = np.asarray(self.pipeline.predict_proba(inputs)[:, 1], dtype=float)
+        risks = apply_sigmoid_parameters(self.calibrator, scores)
+        logger.info(
+            "predict_batch n=%d alerts=%d", len(items), int((risks >= self.threshold).sum())
+        )
+        return [
+            Prediction(risk=float(r), alert=bool(r >= self.threshold), score=float(sc))
+            for r, sc in zip(risks, scores, strict=True)
+        ]
+
     @property
     def explainer(self) -> ShapExplainer:
         """SHAP explainer of the loaded pipeline, built on first use (thread-safe)."""

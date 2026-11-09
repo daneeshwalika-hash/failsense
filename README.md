@@ -159,6 +159,8 @@ make serve          # scripts/serve.sh: loads models:/failsense-q1@candidate, do
   The raw model score is never returned. Without `previous` the deltas are NaN, as for the
   first readout of a truck in training. Label columns are rejected (HTTP 422).
 
+* `POST /predict/batch` - `{"items": [...]}` with 1-100 `/predict` bodies; one model call, answers in the
+  order of the items, every item logged; one invalid item rejects the whole request (422 names the index).
 * `POST /explain` - the same body plus `top_k` (1-20, default 5). Returns the risk, the alert and the `top_k`
   inputs that moved the calibrated risk most (SHAP, contribution in calibrated log-odds, `raises` / `lowers`) and the
   `baseline_risk` of an average truck: `logit(risk) = logit(baseline_risk) + sum of all contributions`. It describes
@@ -230,6 +232,19 @@ ollama serve                                     # or: sudo systemctl start olla
 `FAILSENSE_OLLAMA_URL` overrides the address (e.g. `http://host.docker.internal:11434` from a container);
 `llm.enabled: false` returns only the template report. **Status:** tested against a fake Ollama client and the
 real API without Ollama (fallback path); a real LLM answer has not been generated yet on this machine.
+
+### Monitoring: drift check and coverage
+
+```bash
+make drift-reference   # reference: risks of the deployed model on the validation last readouts
+make drift-check       # PSI + KS test of the API's recent predictions vs. the reference (exit 0/1/2/3)
+make coverage          # tests with a coverage report (also printed in CI)
+```
+
+The drift check looks at the distribution of the answered risk only (the log has no inputs). With 200 rows it
+flags a x10 shift of the counters but not a x3 shift; see `docs/results.md` section 13 and
+[ADR 0006](docs/adr/0006-monitoring-without-evidently.md) (why Evidently was not added). Replay the validation
+last readouts with `uv run python scripts/simulate_stream.py --tail 1` to compare like with like.
 
 ## Future work
 
