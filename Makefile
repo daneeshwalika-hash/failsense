@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline analysis unsupervised class-mix q2 figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -70,6 +70,9 @@ class-mix:  ## Why the calibrated eval set has another class mix than the valida
 
 q2:  ## Q2 classes 0-4: multi-class model, prior-shift correction (ADR 0004), 5x5 total cost on the validation (~7 min)
 	uv run python -m failsense.models.q2_classes
+
+anomaly:  ## Q4: IsolationForest + LOF on healthy trucks, anomaly score as an extra feature (ADR 0005, ~6 min)
+	uv run python -m failsense.models.anomaly
 
 figures:  ## Headline result figures (PNG in reports/figures) from the saved reports; nothing is refitted
 	uv run python -m failsense.report_figures

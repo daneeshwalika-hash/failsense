@@ -179,3 +179,17 @@ q2:
   target_class_counts: [4910, 16, 14, 30, 76]
   n_bootstrap: 500
   mlflow_experiment: failsense-q2-classes
+
+anomaly:
+  # Step 10.11 / Q4 (ADR 0005): detectors fitted on HEALTHY training trucks only (never repaired,
+  # k5 cut-offs); repair labels only evaluate the scores. Scored on the official validation.
+  n_estimators: 300        # IsolationForest trees
+  max_samples: 256         # rows per tree (the IsolationForest default; keeps training fast)
+  pca_components: 50       # PCA before the distance-based LOF (the 90 % of variance, section 10)
+  lof_neighbors: 35
+  lof_max_rows: 20000      # LOF is O(n^2): fit on a seeded subsample of the healthy rows
+  top_fraction: 0.05       # alert the 5 % most anomalous trucks (recall in the top-k)
+  n_bootstrap: 500         # bootstrap resamples of the validation trucks (seed 42)
+  cross_fit_splits: 5      # the anomaly feature of the training rows is cross-fitted by truck
+  n_seeds: 3               # supervised fits per variant (probabilities are averaged)
+  mlflow_experiment: failsense-anomaly

@@ -344,3 +344,41 @@ validation (5,046 trucks), test split untouched.
 * **Optimistic by construction:** the validation class mix is used for the correction and the cost is
   measured on the same trucks (ADR 0004). The honest out-of-sample number is the test split, used once at
   the end.
+
+## 12. Q4: anomaly detection on healthy trucks and the anomaly score as a feature (09.11, ADR 0005)
+
+`make anomaly` (about 6 min), `reports/anomaly_q4_summary.json`, `anomaly_q4_detectors.csv`, MLflow
+experiment `failsense-anomaly`. Detectors are fitted on **healthy training trucks only** (21,277 trucks
+never repaired, 105,671 `k5` rows); the repair labels only evaluate the scores. Official validation (5,046
+trucks, 136 positives, prevalence 0.027), test split untouched.
+
+| Detector (higher score = more anomalous) | PR-AUC [95 % bootstrap] | ROC-AUC | Recall in the top 5 % |
+|---|---|---|---|
+| Random ranking | 0.027 | 0.50 | 5 % |
+| IsolationForest, full inputs | 0.032 [0.024, 0.051] | 0.502 | 8.1 % |
+| IsolationForest, after PCA (50) | 0.030 [0.024, 0.040] | 0.504 | 6.6 % |
+| LOF (novelty), after PCA (50), 20,000 rows | 0.032 [0.026, 0.041] | 0.558 | 6.6 % |
+| *Supervised Q1 model (reference)* | *0.065-0.069* | *0.71* | *16.9 %* |
+
+* **The anomaly scores are close to a random ranking.** What is "abnormal" for the detectors is a
+  different truck type or age (compare section 10: the dominant structure is the specification), not
+  an approaching failure. Unsupervised detection from healthy trucks does not find the repairs here;
+  the supervised model is clearly better.
+* **Anomaly score as an extra feature** (IsolationForest, fixed in advance; training scores
+  cross-fitted by truck so that no row is scored by a detector that saw its truck; the rule was fixed
+  in ADR 0005 before the run; 3 seeds per variant, probabilities averaged):
+
+| | without | with anomaly feature |
+|---|---|---|
+| PR-AUC (mean of 3 seeds) | 0.0691 | 0.0759 |
+| PR-AUC per seed | 0.0653 / 0.0664 / 0.0728 | 0.0718 / 0.0770 / 0.0763 |
+| ROC-AUC | 0.713 | 0.710 |
+| Recall in the top 5 % | 16.9 % | 20.6 % (+5 of 136 trucks) |
+
+  Paired bootstrap of the PR-AUC difference: **+0.0068, std 0.0045, 95 % interval [-0.0023, +0.0165]**,
+  better in 94 % of the resamples. **Formally the ADR 0005 rule is met** (difference positive and larger
+  than the std), and all three seeds agree. **The evidence is weak:** the interval contains 0, the ROC-AUC
+  does not move, and the score alone has no signal (it may encode age or truck type in one number rather
+  than "abnormality"). Nothing was re-registered: the API would also have to serve the detector. The
+  honest reading is "a small, unconfirmed gain"; it would need the Q1 evaluation protocol (paired folds on
+  the validation-like set) before it is built into the model.
