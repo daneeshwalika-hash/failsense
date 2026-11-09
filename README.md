@@ -210,6 +210,27 @@ The simulator replays the last readouts of validation trucks (each with its prev
 random order; `--drift-start` scales the counters up gradually, a fleet used harder than the
 training data, which the drift check (planned) should detect. The test split is never used.
 
+### German maintenance report (local LLM)
+
+`POST /explain` with `"with_report": true` (and the button "Wartungsbericht erzeugen" in the dashboard) returns a
+German report: a local LLM (Ollama, `llm.model` in the config, default `qwen2.5:7b`) **phrases** the prediction
+and the top SHAP factors; it never sees raw readouts and never decides the risk level. The answer is checked
+before anyone sees it: valid JSON for the schema, every cited factor is one of the given factors, the risk level
+equals the one computed from risk and threshold, and the text is German. If Ollama is missing, too slow, or the
+answer fails the checks twice, a **template report** is returned (`report.source = "fallback"`), so the endpoint
+never fails and never shows an unchecked text. The variables are anonymised, so the report only says that a factor
+raises or lowers the model's risk, never why a part fails. The prompt is `prompts/maintenance_report_de.md`.
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh   # install Ollama (Linux), see docs.ollama.com/linux
+ollama pull qwen2.5:7b                           # ~4.7 GB; CPU-only inference takes a while
+ollama serve                                     # or: sudo systemctl start ollama
+```
+
+`FAILSENSE_OLLAMA_URL` overrides the address (e.g. `http://host.docker.internal:11434` from a container);
+`llm.enabled: false` returns only the template report. **Status:** tested against a fake Ollama client and the
+real API without Ollama (fallback path); a real LLM answer has not been generated yet on this machine.
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on

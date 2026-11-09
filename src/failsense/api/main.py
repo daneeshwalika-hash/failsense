@@ -24,9 +24,11 @@ from failsense.api.schemas import (
     LoggedPrediction,
     PredictRequest,
     PredictResponse,
+    ReportOut,
 )
 from failsense.api.service import ModelService
 from failsense.config import load_config
+from failsense.llm.report import ReportFactor, ReportGenerator, ReportInput
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +41,14 @@ def _log_from_config() -> PredictionLog | None:
     return PredictionLog.from_config(load_config())
 
 
+def _reporter_from_config() -> ReportGenerator:
+    return ReportGenerator.from_config(load_config())
+
+
 def create_app(
     loader: Callable[[], ModelService] = _load_from_config,
     log_factory: Callable[[], PredictionLog | None] = lambda: None,
+    reporter_factory: Callable[[], ReportGenerator | None] = lambda: None,
 ) -> FastAPI:
     """Build the app.
 
@@ -50,6 +57,9 @@ def create_app(
         log_factory: Returns the DuckDB prediction log at startup, or ``None`` for no log. The
             default is NO log, so tests never write files; the module-level ``app`` passes the
             log named in the config.
+        reporter_factory: Returns the German report generator (Ollama + fallback), or ``None``.
+            The default is none, so tests never call an LLM; the module-level ``app`` passes the
+            generator named in ``llm.*``.
     """
     if not logging.getLogger().handlers:  # uvicorn configures only its own loggers
         logging.basicConfig(
@@ -61,6 +71,7 @@ def create_app(
         # If this raises (e.g. ModelConfigError), the server does not start.
         app.state.service = loader()
         app.state.prediction_log = log_factory()
+        app.state.reporter = reporter_factory()
         try:
             yield
         finally:
@@ -112,13 +123,20 @@ def create_app(
     @app.post("/explain", response_model=ExplainResponse)
     def explain(
         request: ExplainRequest,
+        http_request: Request,
         service: ModelService = Depends(get_service),  # noqa: B008
     ) -> ExplainResponse:
         """Risk, alert and the `top_k` inputs that moved the risk most (SHAP, calibrated log-odds).
 
         Same request as `/predict` plus `top_k`. The explanation describes what the model uses, not
         what causes a failure. Explanation requests are not written to the prediction log.
+        With `with_report` a German maintenance report is added: a local LLM phrases the facts, the
+        text is checked (JSON schema, only the given factors, risk level, German) and replaced by a
+        template text if the LLM is missing or fails the checks (`report.source`).
         """
+        reporter: ReportGenerator | None = getattr(http_request.app.state, "reporter", None)
+        if request.with_report and reporter is None:
+            raise HTTPException(status_code=503, detail="report generation is not available")
         result = service.explain(
             current=request.current,
             previous=request.previous,
@@ -126,6 +144,26 @@ def create_app(
             k=request.top_k,
         )
         prediction = result.prediction
+        report = None
+        if request.with_report and reporter is not None:
+            generated = reporter.generate(
+                ReportInput(
+                    risk=prediction.risk,
+                    alert=prediction.alert,
+                    threshold=service.threshold,
+                    baseline_risk=result.baseline_risk,
+                    factors=[
+                        ReportFactor(f.feature, f.value, f.contribution) for f in result.factors
+                    ],
+                )
+            )
+            report = ReportOut(
+                **generated.report.model_dump(),
+                source=generated.source,
+                llm_model=generated.model,
+                attempts=generated.attempts,
+                warnings=generated.warnings,
+            )
         return ExplainResponse(
             risk=prediction.risk,
             alert=prediction.alert,
@@ -142,6 +180,7 @@ def create_app(
                 )
                 for f in result.factors
             ],
+            report=report,
         )
 
     @app.get("/predictions/latest", response_model=list[LoggedPrediction])
@@ -193,4 +232,4 @@ def get_service(request: Request) -> ModelService:
     return service
 
 
-app = create_app(log_factory=_log_from_config)
+app = create_app(log_factory=_log_from_config, reporter_factory=_reporter_from_config)

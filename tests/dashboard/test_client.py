@@ -81,3 +81,14 @@ def test_latest_predictions_sends_the_limit() -> None:
     assert client.latest_predictions(5) == [{"id": 1}]
     assert session.calls[0][:2] == ("GET", "http://x/predictions/latest")
     assert session.calls[0][2]["params"] == {"limit": 5}
+
+
+def test_explain_sends_top_k_and_the_report_flag() -> None:
+    session = FakeSession(FakeResponse(200, {"risk": 0.04}))
+    client = ApiClient("http://x", session=session)  # type: ignore[arg-type]
+    assert client.explain({"current": {}}, top_k=3, with_report=True) == {"risk": 0.04}
+    method, url, kwargs = session.calls[0]
+    assert (method, url) == ("POST", "http://x/explain")
+    assert kwargs["json"] == {"current": {}, "top_k": 3, "with_report": True}
+    client.explain({"current": {}})
+    assert session.calls[1][2]["json"]["with_report"] is False

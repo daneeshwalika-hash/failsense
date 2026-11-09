@@ -183,6 +183,7 @@ dashboard:
   history_readouts: 15   # how many of the latest readouts are scored for the risk trajectory
   latest_rows: 15        # rows of the 'latest predictions' table (from the API's log)
   refresh_seconds: 5     # how often that table refreshes itself
+  report_timeout_seconds: 180  # the German report may take minutes on a CPU-only LLM
 
 q2:
   # Q2 (classes 0-4), ADR 0004. Class counts of the official validation split as published in the
@@ -205,3 +206,16 @@ anomaly:
   cross_fit_splits: 5      # the anomaly feature of the training rows is cross-fitted by truck
   n_seeds: 3               # supervised fits per variant (probabilities are averaged)
   mlflow_experiment: failsense-anomaly
+
+llm:
+  # Step 13.11: German maintenance report from the prediction + top SHAP factors, via a local LLM
+  # (Ollama). enabled: false -> the deterministic template report only. The report is validated
+  # (JSON schema, grounded in the given factors, German); invalid or missing LLM -> template report.
+  enabled: true
+  base_url: http://127.0.0.1:11434
+  model: qwen2.5:7b        # ~4.7 GB; `ollama pull qwen2.5:7b`
+  timeout_seconds: 120     # CPU-only inference can take a minute or more
+  temperature: 0.0
+  seed: 42
+  max_attempts: 2
+  prompt_path: prompts/maintenance_report_de.md

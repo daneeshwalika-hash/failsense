@@ -14,6 +14,7 @@ from failsense.api.main import create_app, get_service
 from failsense.api.prediction_log import PredictionLog
 from failsense.api.schemas import ExplainRequest
 from failsense.api.service import ModelService
+from failsense.llm import report as rp
 
 Payload = Callable[..., dict[str, Any]]
 
@@ -112,8 +113,8 @@ def test_explain_endpoint_returns_risk_factors_and_baseline(
     assert response.status_code == 200
     data = response.json()
     assert set(data) == {"risk", "alert", "threshold", "model_name", "model_version",
-                         "baseline_risk", "factors"}  # fmt: skip
-    assert "score" not in data
+                         "baseline_risk", "factors", "report"}  # fmt: skip
+    assert "score" not in data and data["report"] is None
     assert len(data["factors"]) == 4
     for factor in data["factors"]:
         assert set(factor) == {"feature", "value", "contribution", "direction"}
@@ -158,3 +159,110 @@ def test_explain_requests_are_not_written_to_the_prediction_log(
     assert log.count() == 0  # an explanation is an analysis, not a served prediction
     http.post("/predict", json=make_payload())
     assert log.count() == 1
+
+
+# --- German report (with_report) --------------------------------------------------------------
+class FakeReporter:
+    """Records the input and returns a template report (or a given one)."""
+
+    def __init__(self, source: str = "llm") -> None:
+        self.seen: list[rp.ReportInput] = []
+        self.source = source
+
+    def generate(self, data: rp.ReportInput) -> rp.GeneratedReport:
+        self.seen.append(data)
+        return rp.GeneratedReport(
+            rp.fallback_report(data), self.source, "fake:1b" if self.source == "llm" else None,
+            1 if self.source == "llm" else 0, ["attempt 1: x"] if self.source != "llm" else [],
+        )  # fmt: skip
+
+
+def report_client(service: ModelService, reporter: FakeReporter | None) -> TestClient:
+    app = create_app(loader=lambda: service)
+    app.state.reporter = reporter
+    app.dependency_overrides[get_service] = lambda: service
+    return TestClient(app)
+
+
+def test_without_with_report_there_is_no_report_and_the_llm_is_not_called(
+    service: ModelService, make_payload: Payload
+) -> None:
+    reporter = FakeReporter()
+    data = report_client(service, reporter).post("/explain", json=make_payload()).json()
+    assert data["report"] is None and reporter.seen == []
+
+
+def test_with_report_returns_the_validated_report_and_its_origin(
+    service: ModelService, make_payload: Payload
+) -> None:
+    reporter = FakeReporter("llm")
+    response = report_client(service, reporter).post(
+        "/explain", json=make_payload(with_report=True, top_k=3)
+    )
+    assert response.status_code == 200
+    data = response.json()
+    report = data["report"]
+    assert (
+        report["source"] == "llm" and report["llm_model"] == "fake:1b" and report["attempts"] == 1
+    )
+    assert set(report) == {"summary", "risk_level", "recommendation", "reasons", "caveat", "source",
+                           "llm_model", "attempts", "warnings"}  # fmt: skip
+    # the LLM got exactly what the response shows: risk, threshold, baseline and the 3 factors
+    seen = reporter.seen[0]
+    assert seen.risk == data["risk"] and seen.threshold == data["threshold"]
+    assert seen.baseline_risk == data["baseline_risk"]
+    assert [f.feature for f in seen.factors] == [f["feature"] for f in data["factors"]]
+    assert [r["factor"] for r in report["reasons"]] == [f["feature"] for f in data["factors"]]
+    assert report["risk_level"] == rp.risk_level_for(data["risk"], data["threshold"], data["alert"])
+
+
+def test_a_fallback_report_is_labelled_as_such(
+    service: ModelService, make_payload: Payload
+) -> None:
+    data = (
+        report_client(service, FakeReporter("fallback"))
+        .post("/explain", json=make_payload(with_report=True))
+        .json()
+    )
+    assert data["report"]["source"] == "fallback" and data["report"]["llm_model"] is None
+    assert data["report"]["warnings"] == ["attempt 1: x"]
+
+
+def test_with_report_is_503_when_no_reporter_exists(
+    service: ModelService, make_payload: Payload
+) -> None:
+    response = report_client(service, None).post("/explain", json=make_payload(with_report=True))
+    assert response.status_code == 503 and "not available" in response.text
+    # asking for an explanation only still works
+    assert report_client(service, None).post("/explain", json=make_payload()).status_code == 200
+
+
+@pytest.mark.parametrize("flag", ["yes", 1, "true"])
+def test_with_report_must_be_a_real_boolean(
+    service: ModelService, make_payload: Payload, flag: Any
+) -> None:
+    response = report_client(service, FakeReporter()).post(
+        "/explain", json=make_payload(with_report=flag)
+    )
+    assert response.status_code == 422
+
+
+def test_the_real_generator_without_ollama_gives_a_checked_fallback(
+    service: ModelService, make_payload: Payload
+) -> None:
+    """End to end with the real ReportGenerator and an unreachable Ollama."""
+
+    def refuse(request: Any, timeout: float) -> Any:
+        raise OSError("connection refused")
+
+    client = rp.OllamaClient("http://127.0.0.1:9", "m", opener=refuse)
+    app = create_app(loader=lambda: service)
+    app.state.reporter = rp.ReportGenerator(client, "Regeln")
+    app.dependency_overrides[get_service] = lambda: service
+    data = TestClient(app).post("/explain", json=make_payload(with_report=True)).json()
+    report = data["report"]
+    assert report["source"] == "fallback" and "not reachable" in report["warnings"][0]
+    assert report["attempts"] == 1  # an unreachable LLM is not retried
+    assert rp.looks_german(
+        " ".join([report["summary"], report["recommendation"], report["caveat"]])
+    )
