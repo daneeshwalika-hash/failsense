@@ -84,6 +84,8 @@ COPY --chown=app:app pyproject.toml ./
 COPY --chown=app:app configs ./configs
 # the German report prompt (llm.prompt_path); Ollama itself runs outside the container
 COPY --chown=app:app prompts ./prompts
+# the bundled model (1.2 MB) that seeds an empty MLflow registry (python -m failsense.models.seed_registry)
+COPY --chown=app:app models ./models
 COPY --chown=app:app reports/calibration_q1_summary.json reports/registry_q1.json ./reports/
 
 ENV PATH="/app/.venv/bin:$PATH" \

@@ -292,3 +292,18 @@ def test_ollama_address_can_be_overridden_by_the_environment(
     generator = rp.ReportGenerator.from_config({"llm": section})
     assert generator.client is not None
     assert generator.client.base_url == "http://host.docker.internal:11434"
+
+
+def test_the_legacy_variable_still_works_and_the_new_one_wins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prompt = tmp_path / "p.md"
+    prompt.write_text("Regeln", encoding="utf-8")
+    section = {"enabled": True, "base_url": "http://127.0.0.1:11434", "model": "m",
+               "timeout_seconds": 5, "temperature": 0.0, "seed": 1, "max_attempts": 2,
+               "prompt_path": str(prompt)}  # fmt: skip
+    monkeypatch.delenv(rp.OLLAMA_URL_ENV, raising=False)
+    monkeypatch.setenv(rp.LEGACY_OLLAMA_URL_ENV, "http://legacy:11434")
+    assert rp.ReportGenerator.from_config({"llm": section}).client.base_url == "http://legacy:11434"
+    monkeypatch.setenv(rp.OLLAMA_URL_ENV, "http://new:11434")
+    assert rp.ReportGenerator.from_config({"llm": section}).client.base_url == "http://new:11434"
