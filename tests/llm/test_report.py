@@ -109,7 +109,7 @@ def test_fallback_report_is_valid_german_grounded_and_consistent() -> None:
     assert rp.validate_report(report, DATA, "erhöht") == []
     assert rp.looks_german(rp.report_texts(report))
     assert [r.factor for r in report.reasons] == [f.feature for f in FACTORS]
-    assert "4.4%" in report.summary and "über der Alarmschwelle" in report.summary
+    assert "4.4%" in report.summary and "Alarmschwelle" not in report.summary  # no comparison here
     assert "keine Diagnose" in report.caveat
 
 
@@ -122,7 +122,9 @@ def test_fallback_report_follows_the_risk_level(risk: float, alert: bool, level:
     report = rp.fallback_report(data)
     assert report.risk_level == level and len(report.reasons) == 2
     assert rp.validate_report(report, data, level) == []
-    assert ("unter" in report.summary) is (not alert)
+    final = rp.with_comparison(report, data).summary  # the system's comparison sentence in front
+    assert ("unter der Alarmschwelle" in final) is (not alert)
+    assert ("über der Alarmschwelle" in final) is alert
 
 
 def test_validation_finds_invented_duplicate_wrong_level_and_english() -> None:
@@ -206,11 +208,12 @@ def test_client_only_accepts_http_urls() -> None:
 
 # --- generator: retry and fallback ------------------------------------------------------------
 def test_a_valid_llm_answer_is_used() -> None:
-    text = "Das Risiko liegt über der Schwelle; das Fahrzeug ist zu prüfen."
+    text = "Die Lage des Fahrzeugs ist auffällig und sollte geprüft werden."
     client = FakeClient(valid_json(summary=text))
     result = rp.ReportGenerator(client, SYSTEM).generate(DATA)  # type: ignore[arg-type]
     assert (result.source, result.attempts, result.model) == ("llm", 1, "fake:1b")
-    assert result.report.summary.startswith("Das Risiko liegt über") and result.warnings == []
+    assert result.report.summary == f"{rp.comparison_sentence(DATA)} {text}"  # code sentence first
+    assert result.warnings == []
     system, user, schema = client.calls[0]
     assert system == SYSTEM and "risk_level (vorgegeben): erhöht" in user and "properties" in schema
 
@@ -239,7 +242,8 @@ def test_a_wrong_risk_level_is_never_shown() -> None:
 def test_two_bad_answers_fall_back_to_the_template() -> None:
     result = rp.ReportGenerator(FakeClient("x", "{}"), SYSTEM).generate(DATA)  # type: ignore[arg-type]
     assert result.source == "fallback" and result.model is None
-    assert rp.validate_report(result.report, DATA, "erhöht") == []
+    assert result.report.summary.startswith(rp.comparison_sentence(DATA))
+    assert rp.validate_report(rp.fallback_report(DATA), DATA, "erhöht") == []
 
 
 def test_an_unreachable_llm_falls_back_without_a_retry() -> None:
@@ -341,7 +345,8 @@ def test_the_real_answer_with_computed_and_misread_percentages_is_rejected() -> 
     report = rp.MaintenanceReport(**REAL_ANSWER)
     assert rp.looks_german(rp.report_texts(report))  # German, valid JSON, grounded factors ...
     problems = rp.validate_report(report, REAL_DATA, "erhöht")
-    assert len(problems) == 1 and "percentage" in problems[0]  # ... but invented numbers
+    assert any("percentage" in p for p in problems)  # ... but invented numbers
+    assert any("compares numbers" in p for p in problems)  # and a comparison the LLM must not write
     assert rp.ungrounded_percentages(rp.report_texts(report), REAL_DATA) == ["0.3", "0.17", "0.11"]
 
 
@@ -352,7 +357,7 @@ def test_the_corrected_version_of_that_answer_passes() -> None:
     }
     fixed = {
         **REAL_ANSWER,
-        "summary": "Das Risiko liegt bei 4.4% und damit über der Alarmschwelle von 3.5%.",
+        "summary": "Das Modell gibt das Risiko der Komponente mit 4.4% an.",
         "reasons": [reason],
     }
     assert rp.validate_report(rp.MaintenanceReport(**fixed), REAL_DATA, "erhöht") == []
@@ -376,15 +381,15 @@ def test_a_report_with_invented_percentages_is_retried_and_the_clean_retry_is_us
     client = FakeClient(json.dumps(REAL_ANSWER, ensure_ascii=False), clean)
     result = rp.ReportGenerator(client, SYSTEM).generate(REAL_DATA)  # type: ignore[arg-type]
     assert (result.source, result.attempts) == ("llm", 2)
-    assert "percentage(s) that are not among the given facts" in result.warnings[0]
+    assert any("percentage(s) that are not among the given facts" in w for w in result.warnings)
 
 
 def test_two_reports_with_invented_percentages_fall_back_to_the_template() -> None:
     bad = json.dumps(REAL_ANSWER, ensure_ascii=False)
     result = rp.ReportGenerator(FakeClient(bad, bad), SYSTEM).generate(REAL_DATA)  # type: ignore[arg-type]
-    assert (
-        result.source == "fallback" and rp.validate_report(result.report, REAL_DATA, "erhöht") == []
-    )
+    assert result.source == "fallback"
+    assert result.report.summary.startswith(rp.comparison_sentence(REAL_DATA))
+    assert rp.validate_report(rp.fallback_report(REAL_DATA), REAL_DATA, "erhöht") == []
 
 
 def test_the_prompt_and_the_user_message_say_that_contributions_are_not_percent() -> None:
@@ -392,3 +397,106 @@ def test_the_prompt_and_the_user_message_say_that_contributions_are_not_percent(
     assert "KEINE Prozentzahl" in message
     prompt = resolve_path(load_config()["llm"]["prompt_path"]).read_text(encoding="utf-8")
     assert "niemals als Prozent" in prompt and "Berechne keine Differenzen" in prompt
+
+
+# --- the comparison is built in code (decision of 09.11, option 2) ------------------------------
+ACCEPTED_WRONG = {  # accepted by the validator of the same day: every percentage is a given fact
+    "summary": (
+        "Das Risiko einer Reparatur von Component X innerhalb von 48 Zeitschritten beträgt 4.4%, "
+        "was 2.1% über dem Durchschnitt liegt und die Alarmschwelle von 3.5% überschreitet."
+    ),
+    "risk_level": "erhöht",
+    "recommendation": (
+        "Bei nächster Gelegenheit prüfen, um eventuelle Probleme frühzeitig zu erkennen."
+    ),
+    "reasons": [
+        {
+            "factor": "459_9",
+            "explanation": "Das Histogramm 459 in Klasse 9 erhöht das Risiko um +0.17 Log-Odds.",
+        }
+    ],
+    "caveat": (
+        "Diese Aussage basiert auf einer statistischen Vorhersage und stellt keine Diagnose dar."
+    ),
+}
+
+
+def test_the_accepted_but_wrong_average_comparison_is_now_rejected() -> None:
+    """'2.1 % über dem Durchschnitt': 2.1 is the average itself; the difference is 2.3 points."""
+    report = rp.MaintenanceReport(**ACCEPTED_WRONG)
+    assert (
+        rp.ungrounded_percentages(rp.report_texts(report), REAL_DATA) == []
+    )  # the 2nd line is blind
+    phrases = rp.comparison_phrases(rp.report_texts(report))
+    assert phrases and any("Durchschnitt" in p for p in phrases)
+    problems = rp.validate_report(report, REAL_DATA, "erhöht")
+    assert problems == [problems[0]] and "compares numbers" in problems[0]
+
+
+def test_a_comparison_by_the_llm_is_retried_and_the_correct_sentence_comes_from_the_code() -> None:
+    clean = valid_json(REAL_DATA, summary="Die Lage des Fahrzeugs sollte geprüft werden.")
+    client = FakeClient(json.dumps(ACCEPTED_WRONG, ensure_ascii=False), clean)
+    result = rp.ReportGenerator(client, SYSTEM).generate(REAL_DATA)  # type: ignore[arg-type]
+    assert (result.source, result.attempts) == ("llm", 2)
+    assert "compares numbers" in result.warnings[0]
+    assert result.report.summary.startswith(
+        "Das berechnete Risiko von 4.4 % liegt 0.9 Prozentpunkte"
+    )
+    assert (
+        "2.3 Prozentpunkte über dem Durchschnitt aller Fahrzeuge (2.1 %)" in result.report.summary
+    )
+    assert "2.1% über dem Durchschnitt" not in result.report.summary
+
+
+def test_the_comparison_sentence_by_hand() -> None:
+    data = rp.ReportInput(0.0443, True, 0.0353, 0.0209, [])
+    assert rp.comparison_sentence(data) == (
+        "Das berechnete Risiko von 4.4 % liegt 0.9 Prozentpunkte über der Alarmschwelle (3.5 %) "
+        "und 2.3 Prozentpunkte über dem Durchschnitt aller Fahrzeuge (2.1 %)."
+    )
+    below = rp.ReportInput(0.0100, False, 0.0353, 0.0209, [])
+    sentence = rp.comparison_sentence(below)
+    assert "2.5 Prozentpunkte unter der Alarmschwelle (3.5 %)" in sentence
+    assert "1.1 Prozentpunkte unter dem Durchschnitt aller Fahrzeuge (2.1 %)" in sentence
+    same = rp.ReportInput(0.0353, True, 0.0353, 0.0353, [])
+    assert "auf der Höhe der Alarmschwelle (3.5 %)" in rp.comparison_sentence(same)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Das Risiko liegt über der Schwelle.", "Die Alarmschwelle wird überschritten.",
+     "Das ist höher als der Durchschnitt.", "Es sind 0.9 Prozentpunkte mehr.",
+     "Weniger als der Durchschnitt aller Fahrzeuge."],
+)  # fmt: skip
+def test_comparison_phrases_are_found(text: str) -> None:
+    assert rp.comparison_phrases(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Das Histogramm 459 in Klasse 9 erhöht das berechnete Risiko.",  # 'erhöht' is not a comparison
+     "Das Fahrzeug sollte bei der nächsten Wartung geprüft werden.",
+     "Das Modell gibt das Risiko mit 4.4% an."],
+)  # fmt: skip
+def test_ordinary_sentences_are_not_comparisons(text: str) -> None:
+    assert rp.comparison_phrases(text) == []
+
+
+def test_the_percentage_validator_is_still_the_second_line_of_defence() -> None:
+    sneaky = {**ACCEPTED_WRONG, "summary": "Der Faktor trägt 17% zum Ergebnis des Modells bei."}
+    problems = rp.validate_report(rp.MaintenanceReport(**sneaky), REAL_DATA, "erhöht")
+    assert any("percentage" in p for p in problems) and not any("compares" in p for p in problems)
+
+
+def test_the_final_summary_fits_the_api_schema() -> None:
+    from failsense.api.schemas import ReportOut
+
+    result = rp.ReportGenerator(None, SYSTEM).generate(DATA)  # the template path
+    out = ReportOut(**result.report.model_dump(), source="fallback", llm_model=None, attempts=0,
+                    warnings=[])  # fmt: skip
+    assert len(out.summary) > 250 and out.summary.startswith("Das berechnete Risiko von 4.4 %")
+
+
+def test_the_prompt_tells_the_llm_not_to_compare_numbers() -> None:
+    prompt = resolve_path(load_config()["llm"]["prompt_path"]).read_text(encoding="utf-8")
+    assert "Vergleiche keine Zahlen" in prompt and "setzt das System selbst davor" in prompt
