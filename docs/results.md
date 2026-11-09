@@ -311,3 +311,36 @@ Cat0`: 90 % of cluster 1 vs 50 % of cluster 0), not a wear or failure split. Uns
 grouping therefore does not replace the supervised model; it is a descriptive tool (fleet
 segments). Caveat: a repaired truck's last readout lies just before its repair, a non-repaired
 truck's at the end of observation, which differs from the random cut-offs of the validation.
+
+## 11. Q2: how close is the failure (classes 0-4), 5 x 5 cost matrix (09.11)
+
+`make q2`, ADR 0004, `reports/q2_classes_summary.json`, `q2_confusion_*.csv`, MLflow experiment
+`failsense-q2-classes`. Multi-class XGBoost (`multi:softprob`, the Q1 winner's hyper-parameters, not
+re-tuned) on the `k5` training cut-offs, the same 239 inputs; decision = class with the lowest expected
+cost; the label shift is corrected with the class mix published in the dataset paper (ADR 0004). Official
+validation (5,046 trucks), test split untouched.
+
+| Decision (total cost, 5 x 5 matrix) | Cost | Predicted class 4 for |
+|---|---|---|
+| always class 0 (never alert) | 57,400 | 0 trucks |
+| always class 1 / 2 / 3 | 76,570 / 68,192 / 59,616 | |
+| **always class 4 (best constant)** | **49,566** | 5,046 trucks |
+| model, arg-max class | 56,930 | 4 trucks |
+| model, expected cost, **uncorrected** | 44,280 | 3,934 trucks |
+| model, expected cost, **prior-shift corrected** | **43,871** | 4,472 trucks |
+
+* **The correction is not distinguishable from noise on the cost:** corrected minus uncorrected = -409,
+  bootstrap std 882, 66 % of the resamples cheaper. It does improve the validation log loss (0.222 ->
+  0.204), which supports the label-shift assumption for the *probabilities*.
+* **Against the best constant predictor** the model saves 5,695 (11.5 %; bootstrap 95 % interval
+  5,273 ... 6,140). This is the same size as the Q1 saving against "always alert" (6,150).
+* **The urgency classes are not resolved.** With a false alarm costing only 7-10 and a miss 200-500, the
+  expected-cost rule alerts almost every truck and always with "class 4": the corrected model predicts
+  class 4 for 4,336 of 4,910 healthy trucks (88 %) and for all 136 positives, so every true class 1-3 truck
+  lands in class 4 (cheapest alert). Macro F1 is 0.05. The result is therefore Q1 with a very high alert
+  rate, not a model that says *how soon*; the cost matrix is nearly flat in the false-alarm direction.
+* Out-of-fold training probabilities are slightly under-confident for the positives (mean predicted /
+  observed 0.84-0.92 for classes 1-4; class 0: 1.00).
+* **Optimistic by construction:** the validation class mix is used for the correction and the cost is
+  measured on the same trucks (ADR 0004). The honest out-of-sample number is the test split, used once at
+  the end.
