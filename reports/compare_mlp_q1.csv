@@ -1,0 +1,6 @@
+model,family,pr_auc,pr_auc_std,train,gap,mean_proba,seconds,n_columns,diff_vs_logreg_reference,diff_std_vs_logreg_reference,folds_won_vs_logreg_reference,diff_vs_xgboost,diff_std_vs_xgboost,folds_won_vs_xgboost,diff_vs_mlp,diff_std_vs_mlp,folds_won_vs_mlp,diff_vs_xgboost__engineered,diff_std_vs_xgboost__engineered,folds_won_vs_xgboost__engineered
+logreg_reference,logreg,0.10985,0.00547,0.12543,0.01558,0.33081,29.77457,114,,,,,,,,,,,,
+xgboost,boosting,0.13346,0.00799,0.51474,0.38128,0.02655,16.68121,114,,,,,,,,,,,,
+xgboost__engineered,boosting,0.14353,0.00800,0.61240,0.46887,0.02604,33.19568,239,,,,,,,,,,,,
+mlp,neural_network,0.09920,0.01014,0.71093,0.61173,0.02416,48.81764,114,-0.01065,0.01380,1.00000,-0.03426,0.01515,0.00000,,,,,,
+mlp_engineered,neural_network,0.09578,0.00982,0.83331,0.73753,0.02199,52.48462,239,,,,,,,-0.00342,0.01622,3.00000,-0.04775,0.00918,0.00000

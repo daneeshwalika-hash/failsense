@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -27,6 +27,9 @@ regularization:  ## L2 / L1 / ElasticNet grid, non-zero coefs, top L1 features (
 
 compare:  ## One table: logreg / kNN / GaussianNB / trees on the same folds (kNN is slow), MLflow
 	uv run python -m failsense.models.compare_models_cv
+
+mlp:  ## MLPClassifier vs logreg and XGBoost on the same folds, paired (writes compare_mlp_q1.csv, ~3 min)
+	uv run python -m failsense.models.mlp_cv
 
 tune:  ## Optuna search for XGBoost and LightGBM on the validation-like eval set (slow, see make help)
 	uv run python -m failsense.models.tune

@@ -65,6 +65,7 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 | + `log1p` on counters and histogram counts (**linear reference**) | 0.1099 ± 0.0055 | 0.1254 | +0.016 |
 | XGBoost, 300 rounds, untuned (no early stopping) | **0.1335 ± 0.0080** | 0.5147 | +0.381 |
 | XGBoost + engineered features | **0.1435 ± 0.0080** | 0.6124 | +0.469 |
+| MLP (64-32, early stopping, scaled) | 0.0992 ± 0.0101 | 0.7109 | +0.612 |
 
 - The linear reference is about 4× better than the Dummy, but its score is **low**: a linear
   model is limited by bias (learning curve, `docs/problem_framing.md` §6). Tree ensembles
@@ -157,6 +158,11 @@ make serve          # scripts/serve.sh: loads models:/failsense-q1@candidate, do
   Response: calibrated `risk`, `alert` (risk >= the cost-based `threshold`), model version.
   The raw model score is never returned. Without `previous` the deltas are NaN, as for the
   first readout of a truck in training. Label columns are rejected (HTTP 422).
+
+* `POST /explain` - the same body plus `top_k` (1-20, default 5). Returns the risk, the alert and the `top_k`
+  inputs that moved the calibrated risk most (SHAP, contribution in calibrated log-odds, `raises` / `lowers`) and the
+  `baseline_risk` of an average truck: `logit(risk) = logit(baseline_risk) + sum of all contributions`. It describes
+  what the model uses, not what causes a failure; explanation requests are not written to the prediction log.
 
 The service refuses to start if the calibration summary was made for another model than
 `models:/<tuning.registered_model>@<tuning.alias>`.

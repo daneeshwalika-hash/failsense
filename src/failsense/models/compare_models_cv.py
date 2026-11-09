@@ -79,6 +79,7 @@ from sklearn.inspection import permutation_importance
 from sklearn.model_selection import cross_validate
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 
@@ -201,6 +202,31 @@ def make_lightgbm(
     )
 
 
+def make_mlp(random_state: int) -> MLPClassifier:
+    """Small neural network: two hidden layers (64, 32), ReLU, Adam, L2 penalty, early stopping.
+
+    ``early_stopping=True`` holds out a random 10 % of the *training rows* and stops after 10
+    epochs without improvement of the validation score. That inner split is by row, not by truck
+    (``MLPClassifier`` cannot take groups), so readouts of the same truck are on both sides and the
+    stopping point is chosen a little optimistically. The outer cross-validation (the reported
+    PR-AUC) is still grouped by truck. There are no class weights: ``MLPClassifier`` has none; the
+    probabilities are uncalibrated like those of the boosting models.
+    """
+    return MLPClassifier(
+        hidden_layer_sizes=(64, 32),
+        activation="relu",
+        solver="adam",
+        alpha=1e-3,  # L2 penalty
+        batch_size=256,
+        learning_rate_init=1e-3,
+        max_iter=100,
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=10,
+        random_state=random_state,
+    )
+
+
 BOOSTING_FACTORIES = {"hist_gb": make_hist_gb, "xgboost": make_xgboost, "lightgbm": make_lightgbm}
 
 
@@ -281,6 +307,22 @@ def build_models(
             build_model_pipeline(make_random_forest(random_state, model_jobs), cat, scaler=None),
             {"n_estimators": 300, "min_samples_leaf": 50, "class_weight": "balanced_subsample"},
             keep_estimators=True,
+        )
+    )
+    specs.append(
+        ModelSpec(
+            "mlp",
+            "neural_network",
+            # log1p for the heavy tails, then standard scaling: a network needs inputs on one scale.
+            build_model_pipeline(
+                make_mlp(random_state), cat, scaler="standard", log1p_columns=log1p
+            ),
+            {
+                "hidden_layers": "64-32",
+                "alpha": 1e-3,
+                "early_stopping": True,
+                "class_weight": "none",
+            },
         )
     )
     for name, factory in BOOSTING_FACTORIES.items():

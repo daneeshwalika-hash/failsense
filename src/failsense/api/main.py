@@ -1,4 +1,4 @@
-"""FastAPI app: ``GET /health``, ``POST /predict`` and ``GET /predictions/latest``.
+"""FastAPI app: ``/health``, ``POST /predict``, ``POST /explain`` and ``GET /predictions/latest``.
 
 The model is loaded once at startup (lifespan) from the registry alias named in the config
 and kept in ``app.state``. Routes get it through the ``get_service`` dependency, which tests
@@ -17,6 +17,9 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
 from failsense.api.prediction_log import MAX_LATEST, PredictionLog, PredictionRecord
 from failsense.api.schemas import (
+    ExplainRequest,
+    ExplainResponse,
+    FactorOut,
     HealthResponse,
     LoggedPrediction,
     PredictRequest,
@@ -105,6 +108,41 @@ def create_app(
         )
         _write_log(http_request, request, response)
         return response
+
+    @app.post("/explain", response_model=ExplainResponse)
+    def explain(
+        request: ExplainRequest,
+        service: ModelService = Depends(get_service),  # noqa: B008
+    ) -> ExplainResponse:
+        """Risk, alert and the `top_k` inputs that moved the risk most (SHAP, calibrated log-odds).
+
+        Same request as `/predict` plus `top_k`. The explanation describes what the model uses, not
+        what causes a failure. Explanation requests are not written to the prediction log.
+        """
+        result = service.explain(
+            current=request.current,
+            previous=request.previous,
+            specifications=request.specifications,
+            k=request.top_k,
+        )
+        prediction = result.prediction
+        return ExplainResponse(
+            risk=prediction.risk,
+            alert=prediction.alert,
+            threshold=service.threshold,
+            model_name=service.info.name,
+            model_version=service.info.version,
+            baseline_risk=result.baseline_risk,
+            factors=[
+                FactorOut(
+                    feature=f.feature,
+                    value=f.value,
+                    contribution=f.contribution,
+                    direction="raises" if f.contribution > 0 else "lowers",
+                )
+                for f in result.factors
+            ],
+        )
 
     @app.get("/predictions/latest", response_model=list[LoggedPrediction])
     def latest_predictions(

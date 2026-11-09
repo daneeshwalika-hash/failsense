@@ -78,10 +78,21 @@ PR-AUC, 5 folds grouped by truck, same folds for every model, old CV (random cut
 | XGBoost | 0.1335 ± 0.0080 | 0.515 | +0.0236 (5/5) |
 | LightGBM | 0.1331 ± 0.0040 | 0.928 | +0.0233 (5/5) |
 | XGBoost + engineered features (deployed recipe) | **0.1435 ± 0.0080** | 0.612 | +0.0337 (5/5) |
+| MLP (64-32, early stopping), raw features | 0.0992 ± 0.0101 | 0.711 | -0.0107 (1/5) |
+| MLP + engineered features | 0.0958 ± 0.0098 | 0.833 | – |
 
-Source: `reports/compare_models_q1.csv` (Dummy: MLflow runs `dummy_prior_k5`; engineered row:
+Source: `reports/compare_models_q1.csv` and, for the MLP rows, `reports/compare_mlp_q1.csv` (`make mlp`, same folds, refitted
+references reproduce 0.1098 / 0.1335 / 0.1435 exactly; MLflow tag `comparison_set = v3_mlp`) (Dummy: MLflow runs `dummy_prior_k5`; engineered row:
 `reports/compare_models_q1_recheck.csv`). The four boosting and forest models are tied with each other;
 all beat the linear model in 5/5 folds. The large train/validation gaps of the trees show overfitting.
+**The MLP is not competitive** (09.11): standard scaling + `log1p`, two hidden layers (64, 32), L2 penalty, early stopping.
+It is worse than the logistic regression (-0.0107 ± 0.0138, better in 1/5 folds) and clearly worse than XGBoost
+(-0.0343 ± 0.0151, 0/5; with engineered features -0.0478 ± 0.0092, 0/5). It overfits (train 0.71-0.83 vs. validation
+0.10) and the engineered features do not help it (-0.0034, 3/5 folds, noise). With ~117,000 tabular rows, 2.8 % positives
+and heavy-tailed counters, boosted trees remain the right tool; the network was not tuned (no search over width, depth
+or penalty). The early-stopping split inside `MLPClassifier` is by row, not by truck (the class cannot take groups); the
+reported PR-AUC comes from the outer grouped CV.
+
 Without the specs (−0.0069, 0/5 folds) or without `time_step` (−0.0061, 0/5) XGBoost is worse; engineered
 features help (+0.0101, 4/5).
 
