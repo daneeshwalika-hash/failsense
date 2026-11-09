@@ -116,6 +116,23 @@ only switches off the 7 constant columns. Details in the docs; this is simulated
 
 Details, decisions and the evaluation protocol: [docs/problem_framing.md](docs/problem_framing.md).
 
+## Prediction API
+
+```bash
+make serve          # scripts/serve.sh: loads models:/failsense-q1@candidate, docs at /docs
+```
+
+* `GET /health` - status and the loaded model (name, registry version, alias).
+* `POST /predict` - body: `current` readout (`time_step` + the 105 raw columns, `null` allowed),
+  optional `previous` (the readout of the **same truck immediately before** `current`:
+  `time_step` + the 8 counters), and the truck `specifications` (`Spec_0` ... `Spec_7`).
+  Response: calibrated `risk`, `alert` (risk >= the cost-based `threshold`), model version.
+  The raw model score is never returned. Without `previous` the deltas are NaN, as for the
+  first readout of a truck in training. Label columns are rejected (HTTP 422).
+
+The service refuses to start if the calibration summary was made for another model than
+`models:/<tuning.registered_model>@<tuning.alias>`.
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on
