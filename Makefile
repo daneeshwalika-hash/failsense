@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -54,6 +54,15 @@ dashboard:  ## Start the Streamlit dashboard (needs `make serve` running)
 
 simulate:  ## Replay validation readouts to the running API, 1 per second (see --help for drift)
 	uv run python scripts/simulate_stream.py --max-readings 200
+
+compose-up:  ## docker compose: MLflow server + API + dashboard (publishes the model first); needs Docker
+	scripts/compose_up.sh
+
+compose-down:  ## Stop the compose stack (volumes are kept)
+	docker compose down
+
+publish-model:  ## Copy failsense-q1@candidate from the local registry to the MLflow server (http://127.0.0.1:5000)
+	uv run python -m failsense.models.publish
 
 drift-reference:  ## Risks of the deployed model on the validation last readouts = reference for the drift check
 	uv run python -m failsense.monitoring.drift reference

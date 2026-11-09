@@ -280,7 +280,7 @@ class ModelService:
         import mlflow.sklearn
         from mlflow import MlflowClient
 
-        from failsense.tracking import tracking_params_from_config
+        from failsense.tracking import tracking_params_from_config, tracking_uri_override
 
         name, alias = config["tuning"]["registered_model"], config["tuning"]["alias"]
         uri = f"models:/{name}@{alias}"
@@ -292,7 +292,8 @@ class ModelService:
                 "for this model or fix tuning.registered_model / tuning.alias."
             )
         db_path, _, _ = tracking_params_from_config(config)
-        mlflow.set_tracking_uri(f"sqlite:///{resolve_path(db_path)}")
+        # FAILSENSE_MLFLOW_URI (docker compose: http://mlflow:5000) wins over the local database
+        mlflow.set_tracking_uri(tracking_uri_override() or f"sqlite:///{resolve_path(db_path)}")
         pipeline = mlflow.sklearn.load_model(uri)
         version = MlflowClient().get_model_version_by_alias(name, alias).version
         service = cls(

@@ -59,6 +59,13 @@ jobs:
       - name: Build image
         run: docker build -t failsense-api:ci .
 
+      - name: Build the dashboard image and validate the compose file
+        run: |
+          docker build --target dashboard -t failsense-dashboard:ci .
+          docker run --rm failsense-dashboard:ci \
+            python -c "import streamlit, failsense.dashboard.client; print('dashboard ok')"
+          docker compose config -q
+
       - name: Smoke test (imports as the non-root user)
         run: |
           docker run --rm failsense-api:ci \
