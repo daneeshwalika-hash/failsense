@@ -137,3 +137,14 @@ explain:
   max_display: 20          # features in the beeswarm / bar plots
   waterfall_display: 12
   top_groups: 5            # groups compared between permutation and SHAP
+
+api:
+  # Prediction API (step 07-09.11, `scripts/serve.sh`). The model is NOT named here: the
+  # service loads models:/<tuning.registered_model>@<tuning.alias> through the MLflow
+  # settings above, so there is one place to change when the alias moves.
+  # At startup the service checks that this model URI equals the one in the summary file;
+  # it refuses to start otherwise (a calibrator belongs to exactly one model).
+  summary_path: reports/calibration_q1_summary.json   # file with the deployment_choice block
+  summary_key: deployment_choice   # holds calibrator (sigmoid slope/intercept) and threshold
+  host: 127.0.0.1
+  port: 8000
