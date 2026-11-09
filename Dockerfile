@@ -33,7 +33,35 @@ RUN uv sync --locked --no-default-groups --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-default-groups --no-editable
 
-# ---- stage 2: slim runtime image ------------------------------------------------------------
+# ---- stage 1b: the same environment plus Streamlit (the dashboard group) ---------------------
+FROM builder AS builder-dashboard
+RUN uv sync --locked --no-default-groups --group dashboard --no-editable
+
+# ---- stage 2a: dashboard image (target: dashboard) -------------------------------------------
+# Only talks to the API over HTTP (FAILSENSE_API_URL) and reads the validation split from a mounted
+# ./data folder for its demo trucks; it never loads the model.
+FROM python:3.12-slim AS dashboard
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
+WORKDIR /app
+COPY --from=builder-dashboard --chown=app:app /app/.venv /app/.venv
+COPY --chown=app:app pyproject.toml ./
+COPY --chown=app:app configs ./configs
+COPY --chown=app:app src/failsense/dashboard/app.py ./dashboard_app.py
+ENV PATH="/app/.venv/bin:$PATH" \
+    FAILSENSE_ROOT=/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+USER app
+EXPOSE 8501
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=4)"
+CMD ["streamlit", "run", "dashboard_app.py", "--server.port", "8501", "--server.address", "0.0.0.0", \
+     "--browser.gatherUsageStats", "false"]
+
+# ---- stage 2b: slim API runtime image (the default target, keep it LAST) ---------------------
 FROM python:3.12-slim AS runtime
 
 # LightGBM and XGBoost need the OpenMP runtime, which python:*-slim does not ship.
@@ -41,8 +69,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Fixed uid so mounted files can be given matching permissions.
-RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
+# Fixed uid so mounted files can be given matching permissions. /app/logs holds the DuckDB prediction
+# log and /mlflow the data of an MLflow server started from this image (docker compose); both are
+# created here so that a named volume inherits the owner.
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app \
+    && mkdir -p /app/logs /mlflow \
+    && chown app:app /app/logs /mlflow
 
 WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv

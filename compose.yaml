@@ -1,0 +1,72 @@
+# FailSense stack: MLflow server (registry), API, dashboard.   Start: scripts/compose_up.sh
+#
+#   mlflow     the model registry; the API loads models:/failsense-q1@candidate from it
+#   api        FastAPI (http://127.0.0.1:8000/docs); DuckDB prediction log in a named volume
+#   dashboard  Streamlit (http://127.0.0.1:8501); calls the API only
+#
+# The MLflow server runs from the API image (same MLflow version as the client, no second image to
+# keep in sync). The registry starts EMPTY: publish the model once (make publish-model, done by
+# scripts/compose_up.sh); until then the API cannot start and restarts.
+# NOTE: this file was validated with `docker compose config`; it has not been run on the author's
+# machine (Docker Desktop was not running). CI builds the images.
+name: failsense
+
+services:
+  mlflow:
+    build: { context: ., target: runtime }
+    image: failsense-api:compose
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      - --serve-artifacts
+    volumes:
+      - mlflow-data:/mlflow
+    ports:
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5000/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  api:
+    build: { context: ., target: runtime }
+    image: failsense-api:compose
+    environment:
+      FAILSENSE_MLFLOW_URI: http://mlflow:5000
+      # Ollama runs on the host (not in this stack): optional German report, template fallback without it
+      FAILSENSE_OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - prediction-log:/app/logs
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: on-failure
+    # the image's HEALTHCHECK calls /health (503 until the model is loaded)
+
+  dashboard:
+    build: { context: ., target: dashboard }
+    image: failsense-dashboard:compose
+    environment:
+      FAILSENSE_API_URL: http://api:8000
+    volumes:
+      # demo trucks: the validation split read from ./data (never the test split); not part of the image
+      - ./data:/app/data:ro
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  mlflow-data:
+  prediction-log:

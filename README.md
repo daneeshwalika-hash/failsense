@@ -246,6 +246,26 @@ flags a x10 shift of the counters but not a x3 shift; see `docs/results.md` sect
 [ADR 0006](docs/adr/0006-monitoring-without-evidently.md) (why Evidently was not added). Replay the validation
 last readouts with `uv run python scripts/simulate_stream.py --tail 1` to compare like with like.
 
+### Docker compose (MLflow server + API + dashboard)
+
+```bash
+make register        # once: failsense-q1@candidate in the local registry (needs the training data)
+make compose-up      # scripts/compose_up.sh: build, start MLflow, publish the model, start API + dashboard
+make compose-down    # stop (named volumes keep the registry and the prediction log)
+```
+
+`compose.yaml` runs three services: `mlflow` (the registry; started from the API image so the server and
+client versions cannot differ), `api` (loads `models:/failsense-q1@candidate` from the server through
+`FAILSENSE_MLFLOW_URI`, DuckDB log in a volume) and `dashboard` (Streamlit, talks to the API only, reads the
+validation split read-only from `./data`). The registry starts empty; `make publish-model` copies the registered
+model into the server's artifact store and verifies it by reloading (MLflow stores absolute `file://`
+artifact paths that do not exist inside a container). The Ollama server for the German report runs on the host
+(`FAILSENSE_OLLAMA_URL=http://host.docker.internal:11434`); without it the template report is used.
+
+**Status:** the compose file passes `docker compose config` and CI builds both images; the stack has **not been
+started** on the author's machine (Docker Desktop was not running). The same path was exercised without Docker:
+a native `mlflow server`, `make publish-model` against it, and the API loading the model from it.
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on

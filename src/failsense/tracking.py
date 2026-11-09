@@ -30,6 +30,7 @@ at the very end). To avoid confusion we log it as ``val_*``:
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -66,8 +67,18 @@ def tracking_params_from_config(config: Mapping[str, Any]) -> tuple[str, str, st
     return str(db_path), str(artifact_dir), str(experiment)
 
 
+TRACKING_URI_ENV = "FAILSENSE_MLFLOW_URI"
+
+
+def tracking_uri_override() -> str | None:
+    """``FAILSENSE_MLFLOW_URI`` (e.g. ``http://mlflow:5000``) if set: use an MLflow SERVER."""
+    return os.environ.get(TRACKING_URI_ENV) or None
+
+
 def setup_mlflow(config: Mapping[str, Any], experiment: str | None = None) -> str:
-    """Point MLflow at the project's SQLite database and select an experiment.
+    """Point MLflow at the project's SQLite database (or a server) and select an experiment.
+
+    ``FAILSENSE_MLFLOW_URI`` set -> that tracking server is used instead of the local database.
 
     Args:
         config: Project config (needs the ``mlflow`` section).
@@ -82,6 +93,13 @@ def setup_mlflow(config: Mapping[str, Any], experiment: str | None = None) -> st
     """
     db_path, artifact_dir, default_experiment = tracking_params_from_config(config)
     name = experiment or default_experiment
+
+    server = tracking_uri_override()
+    if server:  # an MLflow server decides where artifacts go (proxied through the server)
+        mlflow.set_tracking_uri(server)
+        experiment_obj = mlflow.set_experiment(name)
+        logger.info("MLflow tracking: server %s, experiment %r", server, name)
+        return experiment_obj.experiment_id
 
     # resolve_path makes relative paths absolute (relative to the repo root).
     # An absolute path gives four slashes: sqlite:////home/... - that is correct.
