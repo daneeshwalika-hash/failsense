@@ -75,6 +75,13 @@ class ApiClient:
         """The most recent rows of the API's prediction log, newest first."""
         return self._request("GET", "/predictions/latest", params={"limit": limit})
 
+    def explain(
+        self, payload: Mapping[str, Any], top_k: int = 5, with_report: bool = False
+    ) -> dict[str, Any]:
+        """Risk, the ``top_k`` SHAP factors and (optionally) the German maintenance report."""
+        body = {**payload, "top_k": top_k, "with_report": with_report}
+        return self._request("POST", "/explain", json=body)
+
     def predict(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Calibrated risk, alert flag, threshold and model version for one request body."""
         return self._request("POST", "/predict", json=payload)

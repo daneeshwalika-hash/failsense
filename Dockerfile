@@ -50,6 +50,8 @@ COPY --from=builder --chown=app:app /app/.venv /app/.venv
 # report files are what the service reads at startup.
 COPY --chown=app:app pyproject.toml ./
 COPY --chown=app:app configs ./configs
+# the German report prompt (llm.prompt_path); Ollama itself runs outside the container
+COPY --chown=app:app prompts ./prompts
 COPY --chown=app:app reports/calibration_q1_summary.json reports/registry_q1.json ./reports/
 
 ENV PATH="/app/.venv/bin:$PATH" \

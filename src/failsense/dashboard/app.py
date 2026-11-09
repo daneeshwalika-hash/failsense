@@ -56,6 +56,43 @@ def _score(
     return answer, history, body
 
 
+def _format_value(value: object) -> str:
+    """An input value as table text: numbers with 4 significant digits, ``fehlt`` if missing."""
+    if value is None or (isinstance(value, float) and value != value):
+        return "fehlt"
+    return f"{value:.4g}" if isinstance(value, int | float) else str(value)
+
+
+def _show_report(data: dict) -> None:
+    """The factors and the German maintenance report returned by ``POST /explain``."""
+    report = data["report"]
+    levels = {"niedrig": "success", "erhöht": "warning", "hoch": "error"}
+    getattr(st, levels[report["risk_level"]])(f"Risikolevel: {report['risk_level']}")
+    st.markdown(f"**Zusammenfassung.** {report['summary']}")
+    st.markdown(f"**Empfehlung.** {report['recommendation']}")
+    st.markdown("**Begründung (Faktoren des Modells):**")
+    for reason in report["reasons"]:
+        st.markdown(f"- `{reason['factor']}`: {reason['explanation']}")
+    st.caption(report["caveat"])
+    if report["source"] == "llm":
+        st.caption(f"Quelle: lokales Sprachmodell ({report['llm_model']}), automatisch geprüft.")
+    else:
+        st.caption("Quelle: Textvorlage (das Sprachmodell war nicht verfügbar oder lieferte "
+                   "keinen gültigen Bericht).")  # fmt: skip
+    if report["warnings"]:
+        with st.expander("Hinweise zur Prüfung"):
+            for warning in report["warnings"]:
+                st.write(warning)
+    factors = pd.DataFrame(data["factors"])[["feature", "value", "contribution", "direction"]]
+    # numbers and category text (a specification) in one column cannot be shown as one Arrow type
+    factors["value"] = factors["value"].map(_format_value)
+    st.dataframe(factors, hide_index=True, width="stretch")
+    st.caption(
+        f"Basisrisiko eines durchschnittlichen Fahrzeugs: {data['baseline_risk']:.1%}. "
+        "Beiträge in kalibrierten Log-Odds; die Variablen sind anonymisiert."
+    )
+
+
 @st.fragment(run_every=float(load_config()["dashboard"]["refresh_seconds"]))
 def _latest_predictions(client: ApiClient, limit: int) -> None:
     """The API's most recent logged predictions (every client, e.g. the stream simulator)."""
@@ -149,6 +186,23 @@ def main() -> None:
         shown = {k: v for k, v in body.items() if k != "current"}
         shown["current"] = {k: v for k, v in list(body["current"].items())[:6]} | {"...": "..."}
         st.json(shown)
+
+    st.subheader("Wartungsbericht (Deutsch)")
+    key = [int(truck), int(position), bool(use_previous)]
+    if st.button("Wartungsbericht erzeugen"):
+        report_client = ApiClient(url, timeout=float(section["report_timeout_seconds"]))
+        with st.spinner("Das lokale Sprachmodell schreibt den Bericht (kann dauern) ..."):
+            try:
+                st.session_state["report"] = {
+                    "key": key,
+                    "data": report_client.explain(body, top_k=5, with_report=True),
+                }
+            except ApiError as exc:
+                st.session_state.pop("report", None)
+                st.error(str(exc))
+    stored = st.session_state.get("report")
+    if stored and stored["key"] == key:
+        _show_report(stored["data"])
 
     st.subheader("Latest predictions of the API (all clients)")
     _latest_predictions(client, int(section["latest_rows"]))

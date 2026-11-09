@@ -48,10 +48,38 @@ def fake_backend(monkeypatch: pytest.MonkeyPatch, mini_frames: dict[str, pd.Data
             raise ApiError(state["latest_error"])
         return state.get("latest_rows", [])
 
+    def explain(self: ApiClient, payload: dict[str, Any], top_k: int = 5,
+                with_report: bool = False) -> dict[str, Any]:  # fmt: skip
+        state.setdefault("explain_calls", []).append((payload, top_k, with_report))
+        if state.get("explain_error"):
+            raise ApiError(state["explain_error"], 503)
+        return state.get("explain_answer", EXPLAIN_ANSWER)
+
+    monkeypatch.setattr(ApiClient, "explain", explain)
     monkeypatch.setattr(ApiClient, "latest_predictions", latest)
     monkeypatch.setattr(ApiClient, "health", health)
     monkeypatch.setattr(ApiClient, "predict", predict)
     return state
+
+
+EXPLAIN_ANSWER: dict[str, Any] = {
+    "risk": 0.11, "alert": True, "threshold": 0.05, "model_name": "failsense-q1",
+    "model_version": "7", "baseline_risk": 0.02,
+    "factors": [
+        {"feature": "459_9", "value": 12461.5, "contribution": 0.17, "direction": "raises"},
+        {"feature": "Spec_3", "value": "Cat7", "contribution": -0.06, "direction": "lowers"},
+    ],
+    "report": {
+        "summary": "Das Risiko liegt bei 11.0 % und damit über der Alarmschwelle.",
+        "risk_level": "hoch",
+        "recommendation": "Zeitnah einen Werkstattcheck von Component X einplanen.",
+        "reasons": [
+            {"factor": "459_9", "explanation": "Dieser Faktor erhöht das berechnete Risiko."}
+        ],
+        "caveat": "Dies ist eine statistische Modellaussage und keine Diagnose.",
+        "source": "llm", "llm_model": "qwen2.5:7b", "attempts": 1, "warnings": [],
+    },
+}  # fmt: skip
 
 
 def run() -> AppTest:
@@ -147,3 +175,57 @@ def test_rerun_does_not_resend_the_same_requests(fake_backend: dict) -> None:
     n = len(fake_backend["calls"])
     at.run()  # same truck, readout and switch -> served from the cache
     assert len(fake_backend["calls"]) == n
+
+
+def test_no_report_is_requested_until_the_button_is_clicked(fake_backend: dict) -> None:
+    at = run()
+    assert not at.exception and "explain_calls" not in fake_backend
+    assert [b.label for b in at.button] == ["Wartungsbericht erzeugen"]
+
+
+def test_clicking_the_button_shows_the_german_report_and_its_source(fake_backend: dict) -> None:
+    at = run()
+    at.button[0].click().run()
+    assert not at.exception
+    payload, top_k, with_report = fake_backend["explain_calls"][0]
+    assert (top_k, with_report) == (5, True) and "previous" in payload
+    assert not {"class_label", "proximity_class"} & set(payload["current"])
+    text = " ".join(m.value for m in at.markdown)
+    assert "Zusammenfassung" in text and "Werkstattcheck" in text and "`459_9`" in text
+    assert any("Risikolevel: hoch" in e.value for e in at.error)
+    assert any("qwen2.5:7b" in c.value for c in at.caption)
+    assert len(at.dataframe) >= 1
+
+
+def test_a_fallback_report_is_labelled_as_template(fake_backend: dict) -> None:
+    report = {**EXPLAIN_ANSWER["report"], "source": "fallback", "llm_model": None,
+              "warnings": ["attempt 1: down"]}  # fmt: skip
+    fake_backend["explain_answer"] = {**EXPLAIN_ANSWER, "report": report}
+    at = run()
+    at.button[0].click().run()
+    assert any("Textvorlage" in c.value for c in at.caption)
+    assert not any("qwen2.5" in c.value for c in at.caption)
+
+
+def test_an_api_error_during_the_report_is_shown(fake_backend: dict) -> None:
+    fake_backend["explain_error"] = "POST /explain -> HTTP 503: report generation is not available"
+    at = run()
+    at.button[0].click().run()
+    assert not at.exception and any("HTTP 503" in e.value for e in at.error)
+
+
+def test_the_factor_table_handles_numbers_text_and_missing_values(fake_backend: dict) -> None:
+    from failsense.dashboard.app import _format_value
+
+    assert [_format_value(v) for v in (12461.49, 3, None, float("nan"), "Cat7")] == [
+        "1.246e+04",
+        "3",
+        "fehlt",
+        "fehlt",
+        "Cat7",
+    ]
+    at = run()
+    at.button[0].click().run()  # the answer mixes a number and a category in the value column
+    assert not at.exception
+    table = at.dataframe[-1].value if len(at.dataframe) else None
+    assert table is not None

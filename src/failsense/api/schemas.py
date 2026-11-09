@@ -40,6 +40,7 @@ from pydantic import (
 
 from failsense.data.labels import LABEL_COLUMNS, TIME_COL, VEHICLE_COL
 from failsense.data.schema import SPEC_COLUMNS, counter_columns, feature_columns
+from failsense.llm.report import MaintenanceReport
 
 # Label-like names that must be rejected with a clear message. LABEL_COLUMNS holds the label
 # columns of the training tables; the other two are the challenge's file name / derived name.
@@ -138,6 +139,11 @@ class ExplainRequest(PredictRequest):
     """A prediction request that also asks for the ``top_k`` strongest factors."""
 
     top_k: int = Field(default=5, ge=1, le=20, strict=True, description="Number of factors.")
+    with_report: bool = Field(
+        default=False,
+        strict=True,
+        description="Also return a German maintenance report (local LLM; can take a minute).",
+    )
 
 
 class PredictResponse(BaseModel):
@@ -161,6 +167,15 @@ class FactorOut(BaseModel):
     direction: str = Field(description="'raises' or 'lowers' the risk.")
 
 
+class ReportOut(MaintenanceReport):
+    """The validated German maintenance report and where it came from."""
+
+    source: str = Field(description="'llm' (checked LLM answer) or 'fallback' (template text).")
+    llm_model: str | None = Field(description="Ollama model of an LLM report, else null.")
+    attempts: int
+    warnings: list[str] = Field(description="Why LLM attempts were rejected (if any).")
+
+
 class ExplainResponse(PredictResponse):
     """Risk, alert and the strongest factors behind them."""
 
@@ -168,6 +183,9 @@ class ExplainResponse(PredictResponse):
         ge=0, le=1, description="Calibrated risk of an 'average' truck (SHAP base value)."
     )
     factors: list[FactorOut]
+    report: ReportOut | None = Field(
+        default=None, description="Only when the request had with_report = true."
+    )
 
 
 class HealthResponse(BaseModel):
