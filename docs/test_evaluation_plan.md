@@ -9,7 +9,7 @@ approval.
 | When | Step | State |
 |---|---|---|
 | 09.11 | Plan, six decisions, freeze code, evaluation script + fixture tests (`failsense.evaluate_test`, `scripts/evaluate_test_once.py`) | done |
-| **Sat 14.11** | 1. **Re-freeze on the FINAL commit** (`make freeze --replace`): the manifest now also hashes the evaluation script, `compose.yaml`, `Dockerfile`, `.env.example`, the prompt and the bundled model. No exemptions. The differences to the 09.11 manifest are reported. | open |
+| **Sat 14.11** | 1. **Re-freeze on the FINAL commit** (`uv run python -m failsense.freeze --replace`): the manifest now also hashes the evaluation script, `compose.yaml`, `Dockerfile`, `.env.example`, the prompt and the bundled model. No exemptions. The differences to the 09.11 manifest are reported. | open |
 | **Sat 14.11** | 2. **Single test run** (`uv run python scripts/evaluate_test_once.py --approved-single-run`), only with Daneesh's approval. | open |
 | Sun 15.11 | Release: clean-clone test, tag `v1.0`, public repo (each only on Daneesh's word) | open |
 
