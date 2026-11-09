@@ -1,7 +1,8 @@
-# Results — FailSense (status 06.11.2026)
+# Results — FailSense (status 09.11.2026)
 
 All numbers below come from files in `reports/` or from the MLflow runs (experiments `failsense-q1-binary`,
-`failsense-rul`); the source is named next to each table. Design, decisions and the history of every
+`failsense-rul`, `failsense-q2-classes`, `failsense-anomaly`, `failsense-unsupervised`,
+`failsense-retrain`); the source is named next to each table. Design, decisions and the history of every
 choice are in [problem_framing.md](problem_framing.md). **The test split has not been used.**
 
 ## 1. Summary
@@ -23,6 +24,13 @@ choice are in [problem_framing.md](problem_framing.md). **The test split has not
 
 Source: `reports/calibration_q1_summary.json` (`deployment_choice`, `primary_baselines`,
 `primary_decision_cross_fitted`, `sensitivity_literal`), `reports/threshold_q1.csv`.
+
+**Since 06.11 (sections 10-14):** Q2 classes 0-4: cost 43,871 vs. 49,566 for the best constant, urgency classes
+not resolved (section 11). Q4: anomaly detectors on healthy trucks are close to a random ranking; as an extra
+feature +0.0068 PR-AUC with an interval that includes 0 (section 12). Q3 RUL: Ridge 21.6 -> LightGBM with rolling
+features 18.1 RMSE (section 8). The MLP does not beat logistic regression or XGBoost (section 3). Serving: API,
+dashboard, prediction log, drift check (misses a x3 counter shift), docker compose (not started here), coverage
+83 % (section 13). Retraining: the tuned challenger is not clearly better than the champion (section 14).
 
 ## 2. Evaluation protocol
 
@@ -321,7 +329,11 @@ file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision
   `interventional` variant with a training background sample is the alternative and is not used, for runtime
   reasons. The group-level comparison is the safer reading. Permutation importance is an evaluation of the
   fitted model, not a tool for choosing features.
-- **Not done yet:** Q2 (classes 0–4), anomaly detection (Q4), the LLM report (Q5), the API and dashboard.
+- **Open as of 09.11:** the **test split is unused** (one evaluation at the very end, with Daneesh's approval);
+  the German report has never been produced by a real LLM (Ollama is not installed on the development
+  machine); the docker compose stack has never been started (Docker Desktop was not running; CI builds the
+  images); the drift check is output-only and misses small shifts (section 13); MLP, LightGBM and the
+  anomaly feature are untuned or unconfirmed; the cost matrix is the challenge's, not a fleet's.
   Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
 
 ## 10. Unsupervised view of the training trucks (PCA, KMeans; 09.11)
@@ -442,3 +454,26 @@ trucks, 136 positives, prevalence 0.027), test split untouched.
   check, explain, calibrate, anomaly: 39-65 %, they are run by hand and their helpers are tested) and
   `dashboard/app.py`, which shows 0 % only because Streamlit's headless `AppTest` executes it outside
   coverage's tracing; it is tested (30 tests of the page).
+
+## 14. Retraining: champion vs. challenger on a fixed holdout (09.11, ADR 0007)
+
+`make retrain` (dry run, `reports/retrain_q1.json`, MLflow `failsense-retrain`). Holdout = the 4,706 validation-like
+evaluation rows (117 positives) of the trucks of fold 0 of the CV; both recipes are refitted on the other trucks,
+the alert threshold of each is cross-fitted by truck, cost = SCANIA matrix, primary mapping.
+
+| | Total cost on the holdout |
+|---|---|
+| Never alert | 23,600 |
+| Alert every truck | 32,123 |
+| **Champion** (registered recipe, untuned XGBoost + engineered, 300 rounds) | **21,985** |
+| Challenger (best Optuna parameters, 163 rounds) | 21,467 |
+
+Challenger minus champion: **-518, bootstrap std 759, 95 % interval [-2,091, +941]**, cheaper in 73 % of the
+resamples. The rule of ADR 0007 (interval entirely below 0) is **not met: the champion stays**, nothing was
+registered. This agrees with section 4 (the Optuna search gave +0.0015 PR-AUC, inside the noise). Note that the
+champion saves only 7 % against "never alert" on this holdout (the evaluation rows are mostly class 1, whose miss
+costs 200), against 51 % on the official validation (mostly class 4, miss costs 500): the size of a cost saving
+depends on the class mix as much as on the model.
+
+A promoted version would also need its own calibrator: `deployment_choice.model_version` records the version the
+calibrator was fitted for and the API refuses any other version until `make calibrate` is run.

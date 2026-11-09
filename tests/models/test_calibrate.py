@@ -139,11 +139,13 @@ def test_deployment_record_states_the_choice_and_the_mapping_caveat(analysis) ->
     y = (classes >= 1).astype(int)
     cal = fit_calibrator("sigmoid", variants["raw"], y)
 
-    record = calibrate.deployment_record(cal, result, "sigmoid", {"model_uri": "models:/x@y"})
+    registry = {"model_uri": "models:/x@y", "version": "3"}
+    record = calibrate.deployment_record(cal, result, "sigmoid", registry)
 
     pv = result["per_variant"]["sigmoid"]
     assert record["threshold"] == pv["in_sample"].threshold
     assert record["reported_cost_cross_fitted"] == pv["cross_fit"].cost  # not the optimistic one
     assert record["calibrator"]["slope"] > 0
+    assert record["model_version"] == "3"  # the API refuses to serve another version
     assert "stricter mapping" in record["caveat_literal_mapping"]
     assert "untouched" in record["test_split"]

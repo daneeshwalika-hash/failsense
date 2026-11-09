@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model retrain drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -63,6 +63,9 @@ compose-down:  ## Stop the compose stack (volumes are kept)
 
 publish-model:  ## Copy failsense-q1@candidate from the local registry to the MLflow server (http://127.0.0.1:5000)
 	uv run python -m failsense.models.publish
+
+retrain:  ## Champion vs challenger on a fixed holdout (ADR 0007), dry run; `uv run python -m failsense.models.retrain --promote` registers a winner
+	uv run python -m failsense.models.retrain
 
 drift-reference:  ## Risks of the deployed model on the validation last readouts = reference for the drift check
 	uv run python -m failsense.monitoring.drift reference
