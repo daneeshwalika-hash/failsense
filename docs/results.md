@@ -329,6 +329,16 @@ file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision
   `interventional` variant with a training background sample is the alternative and is not used, for runtime
   reasons. The group-level comparison is the safer reading. Permutation importance is an evaluation of the
   fitted model, not a tool for choosing features.
+- **Q2 does not resolve the urgency classes.** The expected-cost decision puts 88 % of the healthy trucks
+  (4,336 of 4,910) and all 136 positives into class 4 (macro F1 0.05); the Q2 cost saving (43,871 vs. 49,566 for
+  "always class 4") comes from the cost matrix (a false alarm costs 7-10), not from telling classes 1-3 from 4.
+  The prior-shift correction is within noise of the uncorrected model (section 11).
+- **The anomaly detectors are near random** (PR-AUC 0.030-0.032 vs. prevalence 0.027, ROC-AUC 0.50-0.56); they
+  flag unusual truck types, not approaching failures. The anomaly score as a feature (+0.0068 PR-AUC) is
+  unconfirmed (interval includes 0) and not adopted (section 12).
+- **The drift check misses a x3 shift of the counters with 200 rows** (PSI 0.075, KS p 0.012, although the alert
+  rate rose from 55 % to 70 %); it flags x10 and above. It watches the output only and sees no input drift
+  (section 13, ADR 0006; Evidently was rejected on 09.11).
 - **Open as of 09.11:** the **test split is unused** (one evaluation at the very end, with Daneesh's approval);
   the German report has never been produced by a real LLM (Ollama is not installed on the development
   machine); the docker compose stack has never been started (Docker Desktop was not running; CI builds the

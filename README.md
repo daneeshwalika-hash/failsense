@@ -43,6 +43,17 @@ Dependency notes:
 - **Docker:** `python:*-slim` images do not contain `libgomp1` either; the Dockerfile installs it
   (see the Docker section below), otherwise `import lightgbm` fails inside the container.
 
+## Limitations (read this before the results)
+
+* **Q1 ranks only weakly better than chance** (PR-AUC 0.065 vs. base rate 0.027). The cost saving comes from the
+  cost matrix: the cost-optimal decision alerts 59 % of the trucks (precision 3.9 %, recall 85 %).
+* **Q2 does not resolve the urgency classes:** 88 % of healthy trucks and all failures land in class 4.
+* **The anomaly detectors (Q4) are near random** (PR-AUC 0.030-0.032 vs. 0.027).
+* **The drift check misses a x3 shift of the counters with 200 rows** (flags x10 and above); output drift only.
+* **Not yet done:** the test split is unused; no real LLM report has been generated; the docker compose stack has
+  not been started by the author. Details: [docs/results.md](docs/results.md) section 9 and the
+  [model card](docs/model_card.md).
+
 ## Results so far
 
 **Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (status 09.11.2026).
