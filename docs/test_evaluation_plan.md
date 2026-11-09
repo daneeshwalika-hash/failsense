@@ -9,9 +9,12 @@ approval.
 | When | Step | State |
 |---|---|---|
 | 09.11 | Plan, six decisions, freeze code, evaluation script + fixture tests (`failsense.evaluate_test`, `scripts/evaluate_test_once.py`) | done |
-| **Sat 14.11** | 1. **Re-freeze on the FINAL commit** (`uv run python -m failsense.freeze --replace`): the manifest now also hashes the evaluation script, `compose.yaml`, `Dockerfile`, `.env.example`, the prompt and the bundled model. No exemptions. The differences to the 09.11 manifest are reported. | open |
-| **Sat 14.11** | 2. **Single test run** (`uv run python scripts/evaluate_test_once.py --approved-single-run`), only with Daneesh's approval. | open |
-| Sun 15.11 | Release: clean-clone test, tag `v1.0`, public repo (each only on Daneesh's word) | open |
+| **Sat 14.11** | 1. **Clean-clone test following the README FIRST** (fix what breaks; the fixes must be in the final commit) | open |
+| **Sat 14.11** | 2. **Re-freeze on the FINAL commit** (`uv run python -m failsense.freeze --replace`): the manifest also hashes the evaluation script, `compose.yaml`, `Dockerfile`, `.env.example`, the prompt and the bundled model. No exemptions. The differences to the 09.11 manifest are reported. | open |
+| **Sat 14.11** | 3. **Single test run** (`uv run python scripts/evaluate_test_once.py --approved-single-run`), only with Daneesh's approval. | open |
+| **Sat 14.11** | 4. **Docs with the results** (`docs/results.md`, model card, README), numbers as they come out | open |
+| Sun 15.11 | Slides + backup demo video. **No code changes after 14.11** (bugs become GitHub Issues), except blockers | open |
+| **Wed 18.11** | Release: tag `v1.0`, public repo, pin (each only on Daneesh's word) | open |
 
 The manifest of 09.11 (`reports/frozen_manifest.json`) no longer verifies on purpose: code and config changed after it
 (compose fix, LLM grounding, signature, seed step, the evaluation script). The re-freeze replaces it; the evaluation

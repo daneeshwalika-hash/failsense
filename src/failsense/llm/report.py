@@ -73,7 +73,7 @@ class MaintenanceReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    summary: str = Field(min_length=20, max_length=400)
+    summary: str = Field(min_length=20, max_length=250)
     risk_level: RiskLevel
     recommendation: str = Field(min_length=20, max_length=400)
     reasons: list[Reason] = Field(min_length=1, max_length=5)
@@ -203,6 +203,44 @@ _PERCENT = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:%|Prozent\b)")
 PERCENT_TOLERANCE = 0.06  # the facts are given with one decimal; allow its rounding
 
 
+def comparison_sentence(data: ReportInput) -> str:
+    """The risk / threshold / average comparison, built in code (differences in percentage points).
+
+    The LLM must not compare numbers: a real answer said "2.1 % über dem Durchschnitt" for a risk
+    of 4.4 % against an average of 2.1 % (the difference is 2.3 points). Every difference in the
+    report is written here, from the unrounded facts, and put in front of the LLM's summary.
+    """
+    risk, threshold, average = 100 * data.risk, 100 * data.threshold, 100 * data.baseline_risk
+
+    def versus(value: float, reference: float, name: str, shown: float) -> str:
+        gap = round(abs(value - reference), 1)
+        if gap == 0:
+            return f"auf der Höhe {name} ({shown:.1f} %)"
+        side = "über" if value > reference else "unter"
+        return f"{gap:.1f} Prozentpunkte {side} {name} ({shown:.1f} %)"
+
+    return (
+        f"Das berechnete Risiko von {risk:.1f} % liegt "
+        f"{versus(risk, threshold, 'der Alarmschwelle', threshold)} und "
+        f"{versus(risk, average, 'dem Durchschnitt aller Fahrzeuge', average)}."
+    )
+
+
+_COMPARISON = re.compile(
+    r"(über|unter|oberhalb|unterhalb|höher|niedriger|größer|kleiner|mehr|weniger)[^.;]{0,50}?"
+    r"(schwelle|durchschnitt|mittel)"
+    r"|(schwelle|durchschnitt|mittel)[^.;]{0,50}?"
+    r"(über|unter|oberhalb|unterhalb|höher|niedriger|größer|kleiner)"
+    r"|prozentpunkt",
+    re.IGNORECASE,
+)
+
+
+def comparison_phrases(text: str) -> list[str]:
+    """Comparisons with the threshold or the average in LLM text (the system writes those)."""
+    return [m.group(0) for m in _COMPARISON.finditer(text)]
+
+
 def allowed_percentages(data: ReportInput) -> list[float]:
     """The only percentages a report may quote: risk, average risk and alert threshold."""
     return [100 * data.risk, 100 * data.baseline_risk, 100 * data.threshold]
@@ -237,6 +275,11 @@ def validate_report(report: MaintenanceReport, data: ReportInput, level: RiskLev
         problems.append(f"risk_level {report.risk_level!r} differs from the computed {level!r}")
     if not looks_german(report_texts(report)):
         problems.append("the text does not look German")
+    compared = comparison_phrases(report_texts(report))
+    if compared:
+        problems.append(
+            f"the text compares numbers (the system writes comparisons): {compared[:2]}"
+        )
     invented = ungrounded_percentages(report_texts(report), data)
     if invented:
         problems.append(f"percentage(s) that are not among the given facts: {invented}")
@@ -246,7 +289,6 @@ def validate_report(report: MaintenanceReport, data: ReportInput, level: RiskLev
 def fallback_report(data: ReportInput) -> MaintenanceReport:
     """Deterministic German report from templates (no LLM): valid by construction."""
     level = risk_level_for(data.risk, data.threshold, data.alert)
-    comparison = "über" if data.alert else "unter"
     recommendation = {
         "niedrig": "Keine Maßnahme nötig; das Fahrzeug regulär weiter überwachen.",
         "erhöht": "Das Fahrzeug bei der nächsten planmäßigen Wartung auf Component X prüfen.",
@@ -264,9 +306,8 @@ def fallback_report(data: ReportInput) -> MaintenanceReport:
     ]
     return MaintenanceReport(
         summary=(
-            f"Das Modell schätzt das Risiko einer Reparatur innerhalb von 48 Zeitschritten auf "
-            f"{data.risk:.1%}; das liegt {comparison} der Alarmschwelle von {data.threshold:.1%} "
-            f"(Durchschnitt aller Fahrzeuge: {data.baseline_risk:.1%})."
+            f"Das Modell schätzt das Risiko einer Reparatur von Component X innerhalb von 48 "
+            f"Zeitschritten auf {data.risk:.1%}."
         ),
         risk_level=level,
         recommendation=recommendation,
@@ -320,6 +361,12 @@ class OllamaClient:
             raise LlmError(f"Ollama not reachable at {self.base_url}: {exc}") from exc
         except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError) as exc:
             raise LlmError(f"unexpected Ollama reply: {exc!r}") from exc
+
+
+def with_comparison(report: MaintenanceReport, data: ReportInput) -> MaintenanceReport:
+    """The report with the code-built comparison sentence in front of its summary."""
+    summary = f"{comparison_sentence(data)} {report.summary}"
+    return report.model_copy(update={"summary": summary})
 
 
 class ReportGenerator:
@@ -376,7 +423,11 @@ class ReportGenerator:
                     continue
                 problems = validate_report(report, data, level)
                 if not problems:
-                    return GeneratedReport(report, "llm", self.client.model, attempt, warnings)
+                    return GeneratedReport(
+                        with_comparison(report, data), "llm", self.client.model, attempt, warnings
+                    )
                 warnings.extend(f"attempt {attempt}: {p}" for p in problems)
                 logger.warning("LLM report attempt %d rejected: %s", attempt, problems)
-        return GeneratedReport(fallback_report(data), "fallback", None, made, warnings)
+        return GeneratedReport(
+            with_comparison(fallback_report(data), data), "fallback", None, made, warnings
+        )

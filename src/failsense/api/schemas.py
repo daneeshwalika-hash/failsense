@@ -183,6 +183,9 @@ class FactorOut(BaseModel):
 class ReportOut(MaintenanceReport):
     """The validated German maintenance report and where it came from."""
 
+    # the system's comparison sentence (about 200 characters) is prepended to the LLM's summary
+    summary: str = Field(min_length=20, max_length=700)
+
     source: str = Field(description="'llm' (checked LLM answer) or 'fallback' (template text).")
     llm_model: str | None = Field(description="Ollama model of an LLM report, else null.")
     attempts: int

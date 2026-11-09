@@ -11,7 +11,9 @@ Regeln (streng einhalten):
 4. "risk_level" ist vorgegeben; übernimm ihn unverändert.
    Prozentzahlen darfst du nur aus den Fakten übernehmen (Risiko, Durchschnittsrisiko, Alarmschwelle), genau wie
    angegeben. Berechne keine Differenzen und nenne die Beiträge der Faktoren (Log-Odds) niemals als Prozent.
-5. "summary": ein bis zwei Sätze mit dem Risiko in Prozent (genau wie angegeben) und dem Vergleich mit der Alarmschwelle.
+5. "summary": ein bis zwei kurze Sätze, die die Lage beschreiben (Risiko in Prozent genau wie angegeben).
+   **Vergleiche keine Zahlen**: nicht mit der Alarmschwelle, nicht mit dem Durchschnitt, nicht untereinander, und
+   schreibe keine Differenzen. Den Vergleich (mit korrekten Prozentpunkten) setzt das System selbst davor.
 6. "recommendation": eine konkrete, vorsichtige Handlungsempfehlung passend zum Risikolevel
    (niedrig: regulär weiter überwachen; erhöht: bei nächster Gelegenheit prüfen; hoch: zeitnah Werkstattcheck).
 7. "reasons": für jeden der wichtigsten Faktoren ein Eintrag; "factor" muss exakt einem der genannten
