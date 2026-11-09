@@ -46,11 +46,17 @@ def write_reports(reports: Path) -> None:
     ).to_csv(reports / "threshold_q1.csv", index=False)
     pd.DataFrame(
         {
-            "model": ["dummy_mean", "ridge_a100", "lasso_a0.1", "ridge_a100_cycle"],
-            "rmse": [41.7, 21.6, 21.6, 20.1],
-            "rmse_std": [0.0, 1.4, 1.4, 1.4],
+            "model": [
+                "dummy_mean",
+                "ridge_raw",
+                "ridge_rolling",
+                "lightgbm_raw",
+                "lightgbm_rolling",
+            ],
+            "rmse": [41.7, 21.6, 19.6, 18.7, 18.1],
+            "rmse_std": [0.0, 1.4, 0.9, 0.6, 0.8],
         }
-    ).to_csv(reports / "rul_baseline_fd001.csv", index=False)
+    ).to_csv(reports / "rul_timeseries_fd001.csv", index=False)
     summary = {
         "constant_baselines": {f"always_{k}": 50_000.0 + 1000 * k for k in range(5)},
         "decisions": {
@@ -110,7 +116,7 @@ def test_loaders_read_the_saved_files(tmp_path: Path) -> None:
     q2, best, tables = rf.q2_costs(tmp_path)
     assert q2["Always class 4"] == 54_000 and q2[best] == 43_871
     assert set(tables) == {"Uncorrected", "Prior-shift corrected"}
-    assert rf.q3_rmse(tmp_path)[1] == [41.7, 21.6, 21.6, 20.1]
+    assert rf.q3_rmse(tmp_path)[1] == [41.7, 21.6, 19.6, 18.7, 18.1]
 
 
 def test_a_missing_report_names_the_make_target(tmp_path: Path) -> None:
@@ -120,14 +126,14 @@ def test_a_missing_report_names_the_make_target(tmp_path: Path) -> None:
         rf.q2_costs(tmp_path)
     with pytest.raises(FileNotFoundError, match="make calibrate"):
         rf.q1_costs(tmp_path)
-    with pytest.raises(FileNotFoundError, match="make rul-baseline"):
+    with pytest.raises(FileNotFoundError, match="make rul-timeseries"):
         rf.q3_rmse(tmp_path)
 
 
 def test_q3_without_any_known_model_raises(tmp_path: Path) -> None:
     write_reports(tmp_path)
     pd.DataFrame({"model": ["other"], "rmse": [1.0], "rmse_std": [0.1]}).to_csv(
-        tmp_path / "rul_baseline_fd001.csv", index=False
+        tmp_path / "rul_timeseries_fd001.csv", index=False
     )
     with pytest.raises(ValueError, match="none of the expected"):
         rf.q3_rmse(tmp_path)
