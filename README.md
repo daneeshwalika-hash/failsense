@@ -40,19 +40,22 @@ Dependency notes:
   `xgboost` package pulls NVIDIA NCCL libraries on Linux, which a CPU project does not need;
   this matters for the size of the Docker image.
 - **LightGBM needs the system package `libgomp1`** (see Requirements above).
-- **Note for 07.11 (Dockerfile):** `python:*-slim` images do not contain `libgomp1` either, so the
-  Docker image must install it (`apt-get update && apt-get install -y --no-install-recommends
-  libgomp1`), or `import lightgbm` fails inside the container. Use `xgboost-cpu` (already the
-  dependency) to keep the image small.
+- **Docker:** `python:*-slim` images do not contain `libgomp1` either; the Dockerfile installs it
+  (see the Docker section below), otherwise `import lightgbm` fails inside the container.
 
 ## Results so far
 
-**Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (status 06.11.2026).
+**Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (status 09.11.2026).
 The sections below are the short version.
 
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
 5-fold cross validation, folds grouped by truck, 5 random cut-offs per truck, PR-AUC
 (average precision). The test split has not been used.
+
+![Q1 PR-AUC of the models](reports/figures/results_q1_model_comparison.png)
+![Q1 total cost on the official validation](reports/figures/results_q1_cost.png)
+
+*(`make figures` redraws all result figures from the saved reports; nothing is refitted.)*
 
 | Model | Validation PR-AUC | Training PR-AUC | Gap |
 |---|---|---|---|
@@ -98,8 +101,21 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 - **Explanations (SHAP, `make explain`):** on the validation only two histogram groups (459, 291) lose
   PR-AUC clearly when shuffled; the group with the largest SHAP and gain (397) does not. SHAP values are
   in raw log-odds of the uncalibrated model; `top_shap_factors` returns the top features per truck.
-- Not done yet: the other questions (Q2–Q5). No target for the total
-  cost is set.
+- **Q2 (classes 0–4, 5 × 5 cost matrix, 09.11, [ADR 0004](docs/adr/0004-q2-prior-shift.md)):**
+  multi-class XGBoost with a prior-shift correction (the training and validation class mixes
+  differ). Total cost 43,871 vs. 49,566 for the best constant predictor ("always class 4"); the
+  correction is within noise of the uncorrected model (44,280) but improves the log loss. **The
+  urgency classes are not resolved**: 88 % of healthy trucks and all positives land in class 4,
+  because a false alarm costs only 7–10 (macro F1 0.05). The cost is optimistic by construction
+  (validation mix used for the correction).
+  ![Q2 total cost](reports/figures/results_q2_cost.png)
+  ![Q2 confusion matrices](reports/figures/results_q2_confusion.png)
+- **Unsupervised view (09.11):** PCA + KMeans on the training trucks show weak structure (k = 2,
+  silhouette 0.27); the clusters follow the truck specification, not failures (normalised mutual
+  information with repairs 0.007). Anomaly detection (Q4) is next.
+- **Served model:** the API, dashboard, Docker image, prediction log and stream simulator are
+  described in the sections below; they use the Q1 model and its calibrated threshold.
+- Not done yet: Q4 (anomaly detection), Q5 (LLM report). No target for the total cost is set.
 
 **Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
 `GroupKFold` by engine, RUL capped at 125 cycles, RMSE in cycles (lower is better); the
@@ -113,6 +129,8 @@ test file is untouched:
 
 A linear model halves the error of the mean predictor. Ridge and Lasso are identical; Lasso
 only switches off the 7 constant columns. Details in the docs; this is simulated data.
+
+![Q3 RMSE](reports/figures/results_q3_rmse.png)
 
 Details, decisions and the evaluation protocol: [docs/problem_framing.md](docs/problem_framing.md).
 
