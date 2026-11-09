@@ -207,20 +207,23 @@ def q2_costs(reports: Path) -> tuple[dict[str, float], str, dict[str, pd.DataFra
 
 
 def q3_rmse(reports: Path) -> tuple[list[str], list[float], list[float]]:
-    """RMSE (mean, std over folds) of the FD001 baselines."""
-    frame = pd.read_csv(_need(reports / "rul_baseline_fd001.csv", "rul-baseline")).set_index(
-        "model"
-    )
+    """RMSE (mean, std over folds) of the FD001 models from the time-series run."""
+    frame = pd.read_csv(_need(reports / "rul_timeseries_fd001.csv", "rul-timeseries"))
+    frame = frame.set_index("model")
     picks = {
         "dummy_mean": "Mean predictor",
-        "ridge_a100": "Ridge (alpha 100)",
-        "lasso_a0.1": "Lasso (alpha 0.1)",
-        "ridge_a100_cycle": "Ridge + cycle number (not adopted)",
+        "ridge_raw": "Ridge, sensors",
+        "ridge_rolling": "Ridge, + rolling mean/std",
+        "lightgbm_raw": "LightGBM, sensors",
+        "lightgbm_rolling": "LightGBM, + rolling mean/std",
     }
-    rows = [(label, frame.loc[m, "rmse"], frame.loc[m, "rmse_std"]) for m, label in picks.items()
-            if m in frame.index]  # fmt: skip
+    rows = [
+        (label, frame.loc[m, "rmse"], frame.loc[m, "rmse_std"])
+        for m, label in picks.items()
+        if m in frame.index
+    ]
     if not rows:
-        raise ValueError("none of the expected RUL baselines is in the report file")
+        raise ValueError("none of the expected RUL models is in the report file")
     labels, values, stds = zip(*rows, strict=True)
     return list(labels), list(values), list(stds)
 
@@ -274,13 +277,13 @@ def run(config: Mapping[str, Any]) -> list[Path]:
             out / "results_q3_rmse.png",
             "Q3: remaining useful life, NASA C-MAPSS FD001 (GroupKFold by engine)",
             "RMSE in cycles (lower is better)",
-            highlight="Ridge (alpha 100)",
+            highlight="LightGBM, + rolling mean/std",
             errors=stds,
             lower_is_better=True,
             value_format="{:.1f}",
             subtitle=(
-                "Training engines only; simulated data, test file untouched. Ridge and Lasso tie; "
-                "adding the cycle number is not adopted (docs/results.md, section 8)."
+                "Training engines only, RMSE over all cycles (capped RUL), not the official test "
+                "protocol; simulated data, test file untouched."
             ),
         )
     )

@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -57,6 +57,9 @@ explain:  ## SHAP, permutation and gain importance of failsense-q1@candidate on 
 
 rul-baseline:  ## C-MAPSS FD001 RUL: Dummy / Ridge / Lasso baselines, GroupKFold by engine, MLflow
 	uv run python -m failsense.rul.baseline
+
+rul-timeseries:  ## C-MAPSS FD001: rolling mean/std features, Ridge vs LightGBM, GroupKFold by engine, MLflow
+	uv run python -m failsense.rul.timeseries
 
 analysis:  ## Outlier analysis and time_step check (writes CSV/Markdown/figures to reports/)
 	uv run python -m failsense.analysis.outliers

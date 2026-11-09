@@ -69,6 +69,18 @@ rul:
   # (a convention, not a measurement): RUL = min(max_cycle - cycle, cap).
   cap: 125
   mlflow_experiment: failsense-rul
+  # Step 11.11: trailing rolling windows (in cycles) for the mean and std of every informative sensor.
+  rolling_windows: [5, 15]
+  ridge_alpha: 1.0            # as in docs/results.md section 8 (alphas 0.1 ... 100 tie)
+  lightgbm:                   # not tuned: modest, regularised settings for ~100 engines
+    n_estimators: 300
+    learning_rate: 0.05
+    num_leaves: 15
+    min_child_samples: 50
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
 
 tuning:
   # Hyperparameter search (step 7b, 05.11): Optuna TPE, seeded, MedianPruner per fold.

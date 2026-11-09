@@ -135,6 +135,11 @@ test file is untouched:
 A linear model halves the error of the mean predictor. Ridge and Lasso are identical; Lasso
 only switches off the 7 constant columns. Details in the docs; this is simulated data.
 
+**Time-series features (09.11):** trailing rolling mean / std over 5 and 15 cycles (past cycles of the same
+engine only) and LightGBM, same folds: Ridge 21.6 → Ridge + rolling 19.6 → LightGBM 18.7 → **LightGBM +
+rolling 18.1 ± 0.8** (better than the Ridge reference in 5/5 folds). LightGBM overfits (train RMSE 10.4) and
+is not tuned. The score is over all cycles of held-out training engines, not the official test protocol.
+
 ![Q3 RMSE](reports/figures/results_q3_rmse.png)
 
 Details, decisions and the evaluation protocol: [docs/problem_framing.md](docs/problem_framing.md).

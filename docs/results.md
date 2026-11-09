@@ -260,7 +260,29 @@ untouched.
 | Lasso (alpha 0.1) | 21.63 ± 1.38 | 17.72 |
 | Ridge + `cycle` as a feature (not adopted) | 20.09 ± 1.38 | 16.34 |
 
-The alpha of Ridge and Lasso is a tie. Time-series features and boosting come on 11.11.
+The alpha of Ridge and Lasso is a tie.
+
+**Time-series features and LightGBM (09.11, `make rul-timeseries`, `reports/rul_timeseries_fd001.csv`,
+MLflow experiment `failsense-rul`).** Constant columns are removed inside the Pipeline (`VarianceThreshold`,
+fitted per fold; settings 3 and 7 constant sensors in FD001); for the informative sensors the trailing
+rolling mean and std over 5 and 15 cycles are added (60 more columns; windows only look backwards within
+one engine, a test pins this). Same 5 folds grouped by engine, RUL cap 125, LightGBM not tuned
+(300 rounds, 15 leaves, `min_child_samples` 50).
+
+| Model | RMSE (mean ± std) | Train RMSE | Paired vs. reference (folds won) |
+|---|---|---|---|
+| Dummy (mean) | 41.67 ± 0.00 | 41.67 | – |
+| Ridge, 24 settings + sensors (reference) | 21.64 ± 1.38 | 21.44 | – |
+| Ridge + rolling mean / std | 19.60 ± 0.94 | 19.15 | +2.04 ± 0.52 (5/5) |
+| LightGBM, settings + sensors | 18.65 ± 0.61 | 16.07 | +2.99 ± 1.01 (5/5) |
+| **LightGBM + rolling mean / std** | **18.08 ± 0.76** | 10.37 | +3.56 ± 1.13 (5/5) vs. the reference; +0.57 ± 0.28 (5/5) vs. LightGBM without rolling |
+
+Reading: the rolling features help the linear model most (-2.0 RMSE) and LightGBM a little (-0.6); the
+boosting model beats the best linear one by 1.5 ± 0.9 cycles (5/5 folds). **LightGBM overfits** (train 10.4
+vs. validation 18.1), so the real gain from tuning is probably small and not yet tested. The score is the RMSE
+over all cycles of held-out *training* engines with the RUL capped at 125, **not** the official test protocol
+(the last cycle of truncated test engines), so it is not comparable with published FD001 numbers. The test
+file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision for the end.
 
 ## 9. Limitations and open points
 
