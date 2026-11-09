@@ -68,7 +68,16 @@ select = ["E", "F", "I", "B", "UP", "N", "SIM", "T20"]
 [tool.ruff.lint.per-file-ignores]
 "notebooks/*" = ["T20"]
 
+[tool.uv]
+# `uv sync` (local, CI) installs dev AND dashboard. The API image must not contain Streamlit:
+# the Dockerfile uses --no-default-groups.
+default-groups = ["dev", "dashboard"]
+
 [dependency-groups]
+dashboard = [
+    "requests>=2.34.2",
+    "streamlit>=1.67.0",
+]
 dev = [
     "httpx>=0.28.1",
     "jupyter>=1.1.1",

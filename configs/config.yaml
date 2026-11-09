@@ -156,3 +156,14 @@ unsupervised:
   ks: [2, 3, 4, 5, 6, 8, 10]   # numbers of clusters to compare
   silhouette_sample_size: 5000 # silhouette on a random subsample (full O(n^2) is too slow)
   mlflow_experiment: failsense-unsupervised
+
+dashboard:
+  # Streamlit dashboard (`make dashboard`). It only talks to the API over HTTP and never loads
+  # the model. FAILSENSE_API_URL (environment) overrides api_url, e.g. http://api:8000 in compose.
+  api_url: http://127.0.0.1:8000
+  timeout_seconds: 10
+  # Demo trucks come from the OFFICIAL VALIDATION split (never the test split): a fixed random
+  # sample of trucks so the page loads fast.
+  n_demo_trucks: 200
+  seed: 42
+  history_readouts: 15   # how many of the latest readouts are scored for the risk trajectory
