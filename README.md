@@ -133,6 +133,21 @@ make serve          # scripts/serve.sh: loads models:/failsense-q1@candidate, do
 The service refuses to start if the calibration summary was made for another model than
 `models:/<tuning.registered_model>@<tuning.alias>`.
 
+### Docker
+
+```bash
+docker build -t failsense-api .
+docker run --rm -p 8000:8000 -v "$PWD/mlflow.db:/app/mlflow.db" \
+  -v "$PWD/mlartifacts:$PWD/mlartifacts" failsense-api
+```
+
+Multi-stage image (uv, `--locked --no-dev`), `libgomp1` for LightGBM/XGBoost, CPU-only
+`xgboost-cpu`, runs as a non-root user (uid 10001). It contains code, config and the calibration
+summary, **not** the model or any data: the model is loaded from the MLflow registry at startup.
+MLflow stores artifact paths as absolute URIs, hence the second mount at the host path;
+`docker compose` with an MLflow server (planned) removes this detail. CI builds the image and
+imports the app inside it.
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on
