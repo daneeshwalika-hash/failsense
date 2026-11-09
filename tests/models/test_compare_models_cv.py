@@ -35,6 +35,7 @@ ALL_NAMES = [
     "tree_depth8",
     "tree_depthNone",
     "random_forest",
+    "mlp",
     "hist_gb",
     "xgboost",
     "lightgbm",
@@ -69,7 +70,7 @@ def test_all_models_are_in_the_table_in_order(data) -> None:
     assert list(models) == ALL_NAMES
     assert next(iter(models)) == REFERENCE
     assert {m.family for m in models.values()} == {
-        "logreg", "knn", "naive_bayes", "tree", "forest", "boosting",
+        "logreg", "knn", "naive_bayes", "tree", "forest", "neural_network", "boosting",
     }  # fmt: skip
 
 
@@ -403,3 +404,15 @@ def test_mlflow_runs_carry_the_comparison_set_tag_and_old_runs_are_kept(data) ->
     assert old.info.run_id not in {r.info.run_id for r in new_runs}
     best = next(r for r in new_runs if r.info.run_name == "xgboost_k5")
     assert any("boosting_importances" in a.path for a in client.list_artifacts(best.info.run_id))
+
+
+def test_mlp_is_scaled_log1p_transformed_and_stops_early(data) -> None:
+    _, _, cols = data
+    spec = build_models(cols, 42)["mlp"]
+    branches = _numeric_branches(spec.pipeline)
+    assert "num_log1p" in branches and "scale" in branches["num_log1p"].named_steps
+    assert "scale" in branches["num"].named_steps  # the other numeric columns are scaled too
+    mlp = spec.pipeline.named_steps["model"]
+    assert mlp.hidden_layer_sizes == (64, 32) and mlp.early_stopping is True
+    assert mlp.n_iter_no_change == 10 and mlp.random_state == 42
+    assert spec.family == "neural_network" and spec.train_score is True

@@ -134,6 +134,12 @@ class PredictRequest(BaseModel):
         return self
 
 
+class ExplainRequest(PredictRequest):
+    """A prediction request that also asks for the ``top_k`` strongest factors."""
+
+    top_k: int = Field(default=5, ge=1, le=20, strict=True, description="Number of factors.")
+
+
 class PredictResponse(BaseModel):
     """Calibrated risk and the alert decision. The raw model score is never returned."""
 
@@ -142,6 +148,26 @@ class PredictResponse(BaseModel):
     threshold: float = Field(description="Alert threshold on the calibrated risk (cost-based).")
     model_name: str
     model_version: str
+
+
+class FactorOut(BaseModel):
+    """One input and how it moved the risk."""
+
+    feature: str = Field(description="Input column, e.g. 397_5__share or Spec_3.")
+    value: float | str | None = Field(description="The input value (null if missing).")
+    contribution: float = Field(
+        description="Contribution to the calibrated log-odds; > 0 raises the risk, < 0 lowers it."
+    )
+    direction: str = Field(description="'raises' or 'lowers' the risk.")
+
+
+class ExplainResponse(PredictResponse):
+    """Risk, alert and the strongest factors behind them."""
+
+    baseline_risk: float = Field(
+        ge=0, le=1, description="Calibrated risk of an 'average' truck (SHAP base value)."
+    )
+    factors: list[FactorOut]
 
 
 class HealthResponse(BaseModel):

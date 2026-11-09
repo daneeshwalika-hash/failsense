@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -27,6 +28,7 @@ import pandas as pd
 from failsense.config import resolve_path
 from failsense.data.labels import TIME_COL, VEHICLE_COL
 from failsense.data.schema import SPEC_COLUMNS, counter_columns, histogram_groups
+from failsense.explain.shap_utils import ShapExplainer, top_shap_factors
 from failsense.features.build import (
     attach_specifications,
     build_model_features,
@@ -60,6 +62,28 @@ class Prediction:
     risk: float
     alert: bool
     score: float
+
+
+@dataclass(frozen=True)
+class Factor:
+    """One input that moved the risk: ``contribution`` is in CALIBRATED log-odds (slope * SHAP)."""
+
+    feature: str
+    value: float | str | None
+    contribution: float
+
+
+@dataclass(frozen=True)
+class Explanation:
+    """A prediction with its strongest factors.
+
+    ``logit(risk) = logit(baseline_risk) + sum(contribution of ALL inputs)``; ``factors`` holds the
+    ``k`` largest by absolute size, so their sum is only part of the total.
+    """
+
+    prediction: Prediction
+    baseline_risk: float
+    factors: list[Factor]
 
 
 def known_spec_categories(pipeline: Any) -> dict[str, set[str]]:
@@ -97,6 +121,8 @@ class ModelService:
         self.info = info
         self.top_fraction = top_fraction
         self._known_specs = known_spec_categories(pipeline)
+        self._explainer: ShapExplainer | None = None
+        self._explainer_lock = threading.Lock()
 
     # --- features ---------------------------------------------------------------------
     def build_inputs(
@@ -134,6 +160,12 @@ class ModelService:
                 )
 
     # --- prediction -------------------------------------------------------------------
+    def _score(self, inputs: pd.DataFrame) -> Prediction:
+        """Raw score -> sigmoid calibration -> alert flag for one prepared input row."""
+        score = float(self.pipeline.predict_proba(inputs)[0, 1])
+        risk = float(apply_sigmoid_parameters(self.calibrator, [score])[0])
+        return Prediction(risk=risk, alert=risk >= self.threshold, score=score)
+
     def predict(
         self,
         current: Mapping[str, float | None],
@@ -145,15 +177,52 @@ class ModelService:
 
         ``vehicle_id`` is only written to the log, never used as a feature.
         """
-        inputs = self.build_inputs(current, previous, specifications)
-        score = float(self.pipeline.predict_proba(inputs)[0, 1])
-        risk = float(apply_sigmoid_parameters(self.calibrator, [score])[0])
-        alert = risk >= self.threshold
+        result = self._score(self.build_inputs(current, previous, specifications))
         logger.info(
             "predict vehicle=%s time_step=%s previous=%s score=%.5f risk=%.5f alert=%s",
-            vehicle_id, current[TIME_COL], previous is not None, score, risk, alert,
+            vehicle_id, current[TIME_COL], previous is not None, result.score, result.risk,
+            result.alert,
         )  # fmt: skip
-        return Prediction(risk=risk, alert=alert, score=score)
+        return result
+
+    @property
+    def explainer(self) -> ShapExplainer:
+        """SHAP explainer of the loaded pipeline, built on first use (thread-safe)."""
+        with self._explainer_lock:
+            if self._explainer is None:
+                self._explainer = ShapExplainer(self.pipeline, self.input_columns)
+            return self._explainer
+
+    def explain(
+        self,
+        current: Mapping[str, float | None],
+        previous: Mapping[str, float | None] | None,
+        specifications: Mapping[str, str],
+        k: int = 5,
+    ) -> Explanation:
+        """The prediction plus the ``k`` inputs that moved the calibrated risk most.
+
+        SHAP values are additive in the raw log-odds of the uncalibrated model; the sigmoid
+        calibrator is linear in them, so ``slope * shap`` is each input's contribution to the
+        calibrated log-odds (``failsense.explain.shap_utils``). The explanations describe what the
+        MODEL uses, not what causes a failure (the variables are anonymised).
+
+        Raises:
+            ValueError: If ``k < 1``.
+        """
+        inputs = self.build_inputs(current, previous, specifications)
+        result = self._score(inputs)
+        slope = float(self.calibrator["slope"])
+        raw = top_shap_factors(inputs.iloc[0], k=k, explainer=self.explainer, scale=slope)
+        factors = [
+            Factor(name, _json_value(value), float(contribution))
+            for name, value, contribution in raw
+        ]
+        base_margin = float(self.explainer.base_value)
+        baseline = float(
+            apply_sigmoid_parameters(self.calibrator, [1.0 / (1.0 + np.exp(-base_margin))])[0]
+        )
+        return Explanation(prediction=result, baseline_risk=baseline, factors=factors)
 
     def smoke_test(self) -> None:
         """Run one synthetic request; raises if the registered inputs cannot be built.
@@ -210,6 +279,14 @@ class ModelService:
         service.smoke_test()
         logger.info("Loaded %s version %s, threshold %.6f", uri, version, service.threshold)
         return service
+
+
+def _json_value(value: Any) -> float | str | None:
+    """A JSON-safe input value: NaN -> None, numbers -> float, categories stay text."""
+    if isinstance(value, str):
+        return value
+    number = float(value)
+    return None if np.isnan(number) else number
 
 
 def load_deployment(config: Mapping[str, Any]) -> dict[str, Any]:
