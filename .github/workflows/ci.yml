@@ -46,3 +46,21 @@ jobs:
 
       - name: Tests
         run: uv run pytest -q
+
+  # The API image must build from a clean checkout and import its heavy dependencies
+  # (libgomp1 for LightGBM/XGBoost, the app itself). The model is not part of the image.
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t failsense-api:ci .
+
+      - name: Smoke test (imports as the non-root user)
+        run: |
+          docker run --rm failsense-api:ci \
+            python -c "import lightgbm, xgboost, mlflow, shap; from failsense.api.main import app; print('ok', app.title)"
+          docker run --rm failsense-api:ci id -u | grep -qx 10001
