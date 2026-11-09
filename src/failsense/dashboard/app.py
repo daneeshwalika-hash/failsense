@@ -34,6 +34,50 @@ def _load_demo(_config: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     return data.load_demo_trucks(_config)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def _score(
+    url: str, timeout: float, truck: int, position: int, use_previous: bool, n_history: int,
+    _readouts: pd.DataFrame, _specs: pd.DataFrame,
+) -> tuple[dict, pd.DataFrame, dict]:  # fmt: skip
+    """Score one truck through the API; cached for a minute per (truck, readout, switch).
+
+    Streamlit reruns the whole script on every click. Without the cache each rerun would send
+    16 identical requests and fill the prediction log with duplicates. (Underscore arguments
+    are not part of the cache key; the data is fixed for the session.)
+    """
+    client = ApiClient(url, timeout=timeout)
+    truck_readouts = sorted_readouts(_readouts[_readouts[VEHICLE_COL] == truck])
+    truck_specs = _specs[_specs[VEHICLE_COL] == truck].iloc[0].to_dict()
+    body = build_payload(truck_readouts, truck_specs, position, use_previous, vehicle_id=truck)
+    answer = client.predict(body)
+    history = risk_history(
+        client, truck_readouts.iloc[: position + 1], truck_specs, n_history, vehicle_id=truck
+    )
+    return answer, history, body
+
+
+@st.fragment(run_every=float(load_config()["dashboard"]["refresh_seconds"]))
+def _latest_predictions(client: ApiClient, limit: int) -> None:
+    """The API's most recent logged predictions (every client, e.g. the stream simulator)."""
+    try:
+        rows = client.latest_predictions(limit)
+    except ApiError as exc:
+        st.info(f"Prediction log not available: {exc}")
+        return
+    if not rows:
+        st.info("No predictions logged yet. Start `make simulate` or pick a truck above.")
+        return
+    frame = pd.DataFrame(rows)
+    left, right = st.columns(2)
+    left.metric(f"Alerts in the last {len(frame)} predictions", f"{frame['alert'].mean():.0%}")
+    right.metric("Mean risk", f"{frame['risk'].mean():.1%}")
+    shown = frame[["logged_at", "vehicle_id", "time_step", "risk", "alert", "model_version"]]
+    st.dataframe(
+        shown, hide_index=True, width="stretch",
+        column_config={"risk": st.column_config.NumberColumn(format="percent")},
+    )  # fmt: skip
+
+
 def main() -> None:
     config = load_config()
     section = config["dashboard"]
@@ -69,12 +113,10 @@ def main() -> None:
     )  # fmt: skip
 
     # --- prediction ------------------------------------------------------------------------
-    body = build_payload(truck_readouts, truck_specs, position, use_previous, vehicle_id=truck)
     try:
-        answer = client.predict(body)
-        history = risk_history(
-            client, truck_readouts.iloc[: position + 1], truck_specs,
-            int(section["history_readouts"]), vehicle_id=truck,
+        answer, history, body = _score(
+            url, float(section["timeout_seconds"]), int(truck), position, use_previous,
+            int(section["history_readouts"]), readouts, specs,
         )  # fmt: skip
     except ApiError as exc:
         st.error(str(exc))
@@ -107,6 +149,9 @@ def main() -> None:
         shown = {k: v for k, v in body.items() if k != "current"}
         shown["current"] = {k: v for k, v in list(body["current"].items())[:6]} | {"...": "..."}
         st.json(shown)
+
+    st.subheader("Latest predictions of the API (all clients)")
+    _latest_predictions(client, int(section["latest_rows"]))
 
 
 main()

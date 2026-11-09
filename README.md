@@ -161,6 +161,21 @@ known outcome. The page never loads the model: every number comes from `POST /pr
 (`FAILSENSE_API_URL` changes the API address). Streamlit lives in the `dashboard` dependency
 group (installed by `uv sync`, not part of the API image).
 
+### Prediction log and stream simulator
+
+Every `POST /predict` is appended to a DuckDB file (`logs/predictions.duckdb`, git-ignored, set by
+`api.prediction_log`; the raw score is not stored). Only the API process opens the file;
+`GET /predictions/latest?limit=20` returns the newest rows and feeds the dashboard table.
+
+```bash
+make simulate    # 200 readings, 1 per second, to the running API
+uv run python scripts/simulate_stream.py --interval 0.2 --drift-start 60 --drift-factor 2
+```
+
+The simulator replays the last readouts of validation trucks (each with its previous readout) in
+random order; `--drift-start` scales the counters up gradually, a fleet used harder than the
+training data, which the drift check (planned) should detect. The test split is never used.
+
 ## Future work
 
 - **Bosch CNC Machining: cross-machine anomaly detection on real vibration data.** Cut from v1.0 on

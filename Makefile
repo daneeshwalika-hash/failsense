@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard explain matched-check rul-baseline analysis unsupervised class-mix q2 test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare tune evaluate register calibrate serve dashboard simulate explain matched-check rul-baseline analysis unsupervised class-mix q2 test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -48,6 +48,9 @@ serve:  ## Start the prediction API (loads failsense-q1@candidate; docs at /docs
 
 dashboard:  ## Start the Streamlit dashboard (needs `make serve` running)
 	scripts/dashboard.sh
+
+simulate:  ## Replay validation readouts to the running API, 1 per second (see --help for drift)
+	uv run python scripts/simulate_stream.py --max-readings 200
 
 explain:  ## SHAP, permutation and gain importance of failsense-q1@candidate on the official validation (needs make calibrate)
 	uv run python -m failsense.explain.explain_q1

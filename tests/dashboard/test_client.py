@@ -73,3 +73,11 @@ def test_api_url_environment_overrides_config(monkeypatch: pytest.MonkeyPatch) -
     assert api_url_from_config(config) == "http://127.0.0.1:8000"
     monkeypatch.setenv("FAILSENSE_API_URL", "http://api:8000/")
     assert api_url_from_config(config) == "http://api:8000"
+
+
+def test_latest_predictions_sends_the_limit() -> None:
+    session = FakeSession(FakeResponse(200, [{"id": 1}]))
+    client = ApiClient("http://x", session=session)  # type: ignore[arg-type]
+    assert client.latest_predictions(5) == [{"id": 1}]
+    assert session.calls[0][:2] == ("GET", "http://x/predictions/latest")
+    assert session.calls[0][2]["params"] == {"limit": 5}

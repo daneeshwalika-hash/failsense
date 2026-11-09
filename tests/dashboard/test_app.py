@@ -42,6 +42,13 @@ def fake_backend(monkeypatch: pytest.MonkeyPatch, mini_frames: dict[str, pd.Data
         return {"risk": risk, "alert": risk >= state["threshold"], "threshold": state["threshold"],
                 "model_name": "failsense-q1", "model_version": "7"}  # fmt: skip
 
+    def latest(self: ApiClient, limit: int = 20) -> list[dict[str, Any]]:
+        state["latest_limit"] = limit
+        if state.get("latest_error"):
+            raise ApiError(state["latest_error"])
+        return state.get("latest_rows", [])
+
+    monkeypatch.setattr(ApiClient, "latest_predictions", latest)
     monkeypatch.setattr(ApiClient, "health", health)
     monkeypatch.setattr(ApiClient, "predict", predict)
     return state
@@ -100,3 +107,43 @@ def test_api_rejection_is_shown_to_the_user(fake_backend: dict) -> None:
     at = run()
     assert not at.exception
     assert any("HTTP 422" in e.value for e in at.error)
+
+
+def logged(i: int, alert: bool) -> dict[str, Any]:
+    return {"id": i, "logged_at": f"2026-11-09T10:00:0{i}", "vehicle_id": 100 + i,
+            "time_step": 50.0 + i, "has_previous": True, "risk": 0.02 + 0.04 * alert,
+            "alert": alert, "threshold": 0.0353, "model_name": "failsense-q1",
+            "model_version": "7"}  # fmt: skip
+
+
+def test_latest_predictions_table_shows_rows_and_summary(fake_backend: dict) -> None:
+    fake_backend["latest_rows"] = [
+        logged(1, True),
+        logged(2, False),
+        logged(3, False),
+        logged(4, True),
+    ]
+    at = run()
+    assert not at.exception
+    values = {m.label: m.value for m in at.metric}
+    assert values["Alerts in the last 4 predictions"] == "50%"
+    assert values["Mean risk"] == "4.0%"
+    assert len(at.dataframe[0].value) == 4
+    assert fake_backend["latest_limit"] == 15  # dashboard.latest_rows
+
+
+def test_empty_log_and_unavailable_log_are_explained_not_errors(fake_backend: dict) -> None:
+    at = run()
+    assert any("No predictions logged yet" in i.value for i in at.info)
+    fake_backend["latest_error"] = "GET /predictions/latest -> HTTP 503: prediction log is disabled"
+    at = run()
+    assert not at.exception
+    assert any("not available" in i.value for i in at.info)
+
+
+def test_rerun_does_not_resend_the_same_requests(fake_backend: dict) -> None:
+    """A click that changes nothing about the scored readout must not flood the prediction log."""
+    at = run()
+    n = len(fake_backend["calls"])
+    at.run()  # same truck, readout and switch -> served from the cache
+    assert len(fake_backend["calls"]) == n

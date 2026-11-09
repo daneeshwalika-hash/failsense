@@ -148,6 +148,8 @@ api:
   summary_key: deployment_choice   # holds calibrator (sigmoid slope/intercept) and threshold
   host: 127.0.0.1
   port: 8000
+  # DuckDB file with one row per /predict (git-ignored). null disables the log.
+  prediction_log: logs/predictions.duckdb
 
 unsupervised:
   # Step 09.11: PCA map and KMeans on the TRAINING trucks (one row per truck, last readout).
@@ -167,6 +169,8 @@ dashboard:
   n_demo_trucks: 200
   seed: 42
   history_readouts: 15   # how many of the latest readouts are scored for the risk trajectory
+  latest_rows: 15        # rows of the 'latest predictions' table (from the API's log)
+  refresh_seconds: 5     # how often that table refreshes itself
 
 q2:
   # Q2 (classes 0-4), ADR 0004. Class counts of the official validation split as published in the

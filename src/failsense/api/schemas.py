@@ -151,3 +151,18 @@ class HealthResponse(BaseModel):
     model_name: str
     model_version: str
     model_alias: str
+
+
+class LoggedPrediction(BaseModel):
+    """One row of the prediction log (what the API answered, newest first)."""
+
+    id: int
+    logged_at: str
+    vehicle_id: int | None
+    time_step: float
+    has_previous: bool
+    risk: float
+    alert: bool
+    threshold: float
+    model_name: str
+    model_version: str

@@ -33,3 +33,6 @@ mlartifacts/
 mlflow.db
 optuna_q1.db
 CLAUDE.md
+
+# --- Runtime logs (DuckDB prediction log) ---
+logs/

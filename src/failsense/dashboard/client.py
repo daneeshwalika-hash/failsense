@@ -45,7 +45,7 @@ def _detail(response: requests.Response) -> str:
 
 
 class ApiClient:
-    """Thin wrapper around ``requests`` for ``GET /health`` and ``POST /predict``."""
+    """Thin wrapper around ``requests`` for the API's health, predict and log endpoints."""
 
     def __init__(
         self, base_url: str, timeout: float = 10.0, session: requests.Session | None = None
@@ -54,7 +54,7 @@ class ApiClient:
         self.timeout = timeout
         self.session = session or requests.Session()
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         url = f"{self.base_url}{path}"
         try:
             response = self.session.request(method, url, timeout=self.timeout, **kwargs)
@@ -70,6 +70,10 @@ class ApiClient:
     def health(self) -> dict[str, Any]:
         """Status and loaded model (name, version, alias)."""
         return self._request("GET", "/health")
+
+    def latest_predictions(self, limit: int = 20) -> list[dict[str, Any]]:
+        """The most recent rows of the API's prediction log, newest first."""
+        return self._request("GET", "/predictions/latest", params={"limit": limit})
 
     def predict(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Calibrated risk, alert flag, threshold and model version for one request body."""
