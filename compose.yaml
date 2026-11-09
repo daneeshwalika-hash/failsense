@@ -1,20 +1,27 @@
-# FailSense stack: MLflow server (registry), API, dashboard.   Start: scripts/compose_up.sh
+# FailSense stack: MLflow server (registry), seed, API, dashboard.   Start: docker compose up --build
 #
-#   mlflow     the model registry; the API loads models:/failsense-q1@candidate from it
-#   api        FastAPI (http://127.0.0.1:8000/docs); DuckDB prediction log in a named volume
+#   mlflow     the model registry (started from the API image: same MLflow version as the clients)
+#   seed       one-shot: puts the bundled model (models/failsense-q1, 1.2 MB) into an EMPTY registry,
+#              so a clean machine works; a registry that already has the alias is left alone
+#   api        FastAPI (http://127.0.0.1:8000/docs) loads models:/failsense-q1@candidate; its fail-fast
+#              checks stay (model/summary mismatch, calibrator for another version)
 #   dashboard  Streamlit (http://127.0.0.1:8501); calls the API only
 #
-# The MLflow server runs from the API image (same MLflow version as the client, no second image to
-# keep in sync). The registry starts EMPTY: publish the model once (make publish-model, done by
-# scripts/compose_up.sh); until then the API cannot start and restarts.
-# NOTE: this file was validated with `docker compose config`; it has not been run on the author's
-# machine (Docker Desktop was not running). CI builds the images.
+# Why MLFLOW_SERVER_ALLOWED_HOSTS: MLflow >= 3.5 validates the Host header (DNS-rebinding protection) and
+# by default allows only localhost and private IPs. Containers call http://mlflow:5000, so the Host header is
+# "mlflow:5000" and the server answers 403 "Invalid Host header". The list below names exactly the hosts
+# that are used (the port must be part of an entry); "*" would switch the protection off and is NOT used.
+#
+# Ollama (optional German report) runs on the host: OLLAMA_BASE_URL in .env (see .env.example).
+# NOTE: validated with `docker compose config`; CI builds the images.
 name: failsense
 
 services:
   mlflow:
     build: { context: ., target: runtime }
     image: failsense-api:compose
+    environment:
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:*,127.0.0.1:*"
     command:
       - mlflow
       - server
@@ -34,13 +41,24 @@ services:
       retries: 12
       start_period: 20s
 
+  seed:
+    build: { context: ., target: runtime }
+    image: failsense-api:compose
+    command: ["python", "-m", "failsense.models.seed_registry"]
+    environment:
+      FAILSENSE_MLFLOW_URI: http://mlflow:5000
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build: { context: ., target: runtime }
     image: failsense-api:compose
     environment:
       FAILSENSE_MLFLOW_URI: http://mlflow:5000
-      # Ollama runs on the host (not in this stack): optional German report, template fallback without it
-      FAILSENSE_OLLAMA_URL: http://host.docker.internal:11434
+      # Ollama runs on the host (not in this stack); without it the template report is used
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -48,8 +66,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
-      mlflow:
-        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
     restart: on-failure
     # the image's HEALTHCHECK calls /health (503 until the model is loaded)
 

@@ -240,7 +240,7 @@ ollama pull qwen2.5:7b                           # ~4.7 GB; CPU-only inference t
 ollama serve                                     # or: sudo systemctl start ollama
 ```
 
-`FAILSENSE_OLLAMA_URL` overrides the address (e.g. `http://host.docker.internal:11434` from a container);
+`OLLAMA_BASE_URL` overrides the address (e.g. `http://host.docker.internal:11434` from a container);
 `llm.enabled: false` returns only the template report. **Status:** tested against a fake Ollama client and the
 real API without Ollama (fallback path); a real LLM answer has not been generated yet on this machine.
 
@@ -257,25 +257,37 @@ flags a x10 shift of the counters but not a x3 shift; see `docs/results.md` sect
 [ADR 0006](docs/adr/0006-monitoring-without-evidently.md) (why Evidently was not added). Replay the validation
 last readouts with `uv run python scripts/simulate_stream.py --tail 1` to compare like with like.
 
-### Docker compose (MLflow server + API + dashboard)
+### Docker compose (MLflow server + seed + API + dashboard)
 
 ```bash
-make register        # once: failsense-q1@candidate in the local registry (needs the training data)
-make compose-up      # scripts/compose_up.sh: build, start MLflow, publish the model, start API + dashboard
-make compose-down    # stop (named volumes keep the registry and the prediction log)
+cp .env.example .env     # optional: OLLAMA_BASE_URL (default http://host.docker.internal:11434)
+docker compose up --build   # or: make compose-up
+docker compose down         # stop (named volumes keep the registry and the prediction log)
 ```
 
-`compose.yaml` runs three services: `mlflow` (the registry; started from the API image so the server and
-client versions cannot differ), `api` (loads `models:/failsense-q1@candidate` from the server through
-`FAILSENSE_MLFLOW_URI`, DuckDB log in a volume) and `dashboard` (Streamlit, talks to the API only, reads the
-validation split read-only from `./data`). The registry starts empty; `make publish-model` copies the registered
-model into the server's artifact store and verifies it by reloading (MLflow stores absolute `file://`
-artifact paths that do not exist inside a container). The Ollama server for the German report runs on the host
-(`FAILSENSE_OLLAMA_URL=http://host.docker.internal:11434`); without it the template report is used.
+A clean machine works with nothing but the repository and `./data/processed/scania` (the validation Parquet files
+the dashboard reads, read-only):
 
-**Status:** the compose file passes `docker compose config` and CI builds both images; the stack has **not been
-started** on the author's machine (Docker Desktop was not running). The same path was exercised without Docker:
-a native `mlflow server`, `make publish-model` against it, and the API loading the model from it.
+* `mlflow` - the registry, started from the API image so the server and client versions cannot differ.
+  `MLFLOW_SERVER_ALLOWED_HOSTS=mlflow:5000,localhost:*,127.0.0.1:*`: MLflow >= 3.5 validates the `Host` header
+  (DNS-rebinding protection) and by default allows only localhost and private IPs, so a call to
+  `http://mlflow:5000` answers 403 "Invalid Host header". The list names exactly the hosts in use (the port is part
+  of an entry); `*` would switch the protection off and is not used.
+* `seed` - one-shot: if the registry has no `failsense-q1@candidate`, it logs the bundled model
+  (`models/failsense-q1/`, 1.2 MB, SHA-256 checked) **through the server** (MLflow stores absolute `file://`
+  artifact paths that do not exist in a container) and sets the alias. A registry that already has the alias is
+  left alone.
+* `api` - waits for the seed, loads the model by name and alias; the fail-fast checks stay (summary for another
+  model or another version -> it refuses to start).
+* `dashboard` - Streamlit, talks to the API only.
+
+Ollama runs on the host. `OLLAMA_BASE_URL` (in `.env`) is where the API finds it; on Windows Ollama listens on
+`127.0.0.1` only by default, so start it with `OLLAMA_HOST=0.0.0.0` (and allow the firewall prompt), otherwise the
+API uses the template report. `make publish-model` copies a NEWER locally registered model into the server; a new
+version also needs `make calibrate`, or the API refuses it.
+
+**Status:** the compose file passes `docker compose config` and CI builds both images; the seed path (empty
+registry -> seed -> the production loader) and the Host-header behaviour are tested without Docker.
 
 ### Retraining and the model card
 

@@ -49,6 +49,45 @@ def probe_frame(input_columns: Sequence[str], n: int = 5, seed: int = 0) -> pd.D
     return frame[list(input_columns)]
 
 
+def register_pipeline(
+    pipeline: Any,
+    target_tracking_uri: str,
+    name: str,
+    alias: str,
+    input_columns: Sequence[str],
+    source: str,
+    experiment: str = "failsense-published",
+) -> dict[str, Any]:
+    """Log ``pipeline`` through ``target_tracking_uri``, register it, set the alias, reload-check.
+
+    The model is LOGGED (not copied by path), so the target's artifact store holds it and no
+    absolute ``file://`` path leaks into the registry.
+
+    Raises:
+        AssertionError: If the model reloaded from the target predicts differently.
+    """
+    probe = probe_frame(input_columns)
+    expected = pipeline.predict_proba(probe)
+    mlflow.set_tracking_uri(target_tracking_uri)
+    mlflow.set_experiment(experiment)
+    with mlflow.start_run(run_name=f"publish_{name}_{alias}"):
+        mlflow.set_tag("source", source)
+        info = mlflow.sklearn.log_model(
+            pipeline, name="model", input_example=probe,
+            skops_trusted_types=TRUSTED_TYPES, registered_model_name=name,
+        )  # fmt: skip
+        version = str(info.registered_model_version)
+    MlflowClient().set_registered_model_alias(name, alias, version)
+    reloaded = mlflow.sklearn.load_model(f"models:/{name}@{alias}")
+    np.testing.assert_array_equal(
+        reloaded.predict_proba(probe), expected,
+        err_msg="the model reloaded from the target predicts differently from the source",
+    )  # fmt: skip
+    logger.info("Registered %s@%s as version %s in %s (reload verified)", name, alias, version,
+                target_tracking_uri)  # fmt: skip
+    return {"name": name, "alias": alias, "version": version, "target": target_tracking_uri}
+
+
 def copy_registered_model(
     source_tracking_uri: str,
     target_tracking_uri: str,
@@ -57,39 +96,14 @@ def copy_registered_model(
     input_columns: Sequence[str],
     experiment: str = "failsense-published",
 ) -> dict[str, Any]:
-    """Load ``models:/name@alias`` from the source registry and register it in the target.
-
-    Returns:
-        ``{"name", "alias", "version", "target"}`` of the new model version.
-
-    Raises:
-        AssertionError: If the model reloaded from the target predicts differently from the source.
-    """
+    """Load ``models:/name@alias`` from the source registry and register it in the target."""
     mlflow.set_tracking_uri(source_tracking_uri)
     source_uri = f"models:/{name}@{alias}"
     pipeline = mlflow.sklearn.load_model(source_uri)
-    probe = probe_frame(input_columns)
-    expected = pipeline.predict_proba(probe)
-
-    mlflow.set_tracking_uri(target_tracking_uri)
-    mlflow.set_experiment(experiment)
-    with mlflow.start_run(run_name=f"publish_{name}_{alias}"):
-        mlflow.set_tag("source", f"{source_tracking_uri} {source_uri}")
-        info = mlflow.sklearn.log_model(
-            pipeline, name="model", input_example=probe,
-            skops_trusted_types=TRUSTED_TYPES, registered_model_name=name,
-        )  # fmt: skip
-        version = str(info.registered_model_version)
-    MlflowClient().set_registered_model_alias(name, alias, version)
-
-    reloaded = mlflow.sklearn.load_model(f"models:/{name}@{alias}")
-    np.testing.assert_array_equal(
-        reloaded.predict_proba(probe), expected,
-        err_msg="the model reloaded from the target predicts differently from the source",
+    return register_pipeline(
+        pipeline, target_tracking_uri, name, alias, input_columns,
+        f"{source_tracking_uri} {source_uri}", experiment,
     )  # fmt: skip
-    logger.info("Published %s@%s as version %s to %s (reload verified)", name, alias, version,
-                target_tracking_uri)  # fmt: skip
-    return {"name": name, "alias": alias, "version": version, "target": target_tracking_uri}
 
 
 def run(config: Mapping[str, Any], target: str) -> dict[str, Any]:

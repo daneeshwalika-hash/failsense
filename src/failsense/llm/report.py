@@ -39,7 +39,8 @@ from failsense.config import resolve_path
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL_ENV = "FAILSENSE_OLLAMA_URL"
+OLLAMA_URL_ENV = "OLLAMA_BASE_URL"
+LEGACY_OLLAMA_URL_ENV = "FAILSENSE_OLLAMA_URL"  # accepted for older setups
 RiskLevel = Literal["niedrig", "erhöht", "hoch"]
 HIGH_RISK_FACTOR = 2.0  # risk >= 2 x threshold -> "hoch"
 MAX_VALUE_LENGTH = 32
@@ -310,8 +311,12 @@ class ReportGenerator:
         prompt = resolve_path(section["prompt_path"]).read_text(encoding="utf-8")
         client = None
         if section.get("enabled", True):
-            # FAILSENSE_OLLAMA_URL overrides the address, e.g. http://host.docker.internal:11434
-            base_url = os.environ.get(OLLAMA_URL_ENV) or section["base_url"]
+            # OLLAMA_BASE_URL overrides the address, e.g. http://host.docker.internal:11434
+            base_url = (
+                os.environ.get(OLLAMA_URL_ENV)
+                or os.environ.get(LEGACY_OLLAMA_URL_ENV)
+                or section["base_url"]
+            )
             client = OllamaClient(
                 base_url, section["model"], float(section["timeout_seconds"]),
                 float(section["temperature"]), int(section["seed"]),

@@ -1,0 +1,9 @@
+{
+  "name": "failsense-q1",
+  "registry_version": "1",
+  "run_id": "a40dd5b3a89b4b38b63a92bcf5fe09d8",
+  "winner": "xgboost_step6_engineered",
+  "model_sha256": "4455aab692355c9a379d085b2375b2e9000a0af7f61a4c45516413bf907a59da",
+  "input_columns": 239,
+  "note": "Copy of models:/failsense-q1@candidate v1 (a Pipeline: imputer + one-hot + XGBoost). Seeds an empty MLflow registry (docker compose); the calibrator and threshold are in reports/calibration_q1_summary.json."
+}

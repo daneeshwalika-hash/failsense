@@ -9,6 +9,9 @@ repos:
       - id: check-toml
       - id: check-added-large-files
         args: ["--maxkb=1000"]
+        # The one deliberate exception: the 1.1 MB bundled model that seeds an empty MLflow registry
+        # (docker compose). Its SHA-256 is in models/failsense-q1/source.json. Everything else stays < 1 MB.
+        exclude: ^models/failsense-q1/model\.skops$
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

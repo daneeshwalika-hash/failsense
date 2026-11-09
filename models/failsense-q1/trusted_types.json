@@ -1,0 +1,14 @@
+[
+  "builtins.frozenset",
+  "functools.partial",
+  "numpy.dtype",
+  "failsense.models.pipeline._log1p_nonnegative",
+  "failsense.models.pipeline._numeric_excluding",
+  "xgboost.sklearn.XGBClassifier",
+  "xgboost.core.Booster",
+  "lightgbm.sklearn.LGBMClassifier",
+  "lightgbm.basic.Booster",
+  "collections.OrderedDict",
+  "numpy.float32",
+  "numpy.int64"
+]
