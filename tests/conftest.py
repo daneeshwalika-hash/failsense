@@ -7,6 +7,9 @@ data contract and the training entry points run without ``data/``.
 
 from __future__ import annotations
 
+import builtins
+import io
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -284,3 +287,52 @@ def make_payload() -> Callable[..., dict[str, Any]]:
         return body
 
     return factory
+
+
+# --- spy on data reads (guards of the test split) ---------------------------------------
+DATA_SUFFIXES = (".csv", ".parquet", ".txt")
+
+
+def is_test_split_file(path: str) -> bool:
+    """True for a data file whose NAME marks it as a test-split file.
+
+    ``test_operational_readouts.csv``, ``test_labels.parquet``, ``test_FD001.txt`` and
+    ``RUL_FD001.txt`` match. Only the file name counts: pytest's temp folders contain the
+    name of the running test (``test_...``) in their path.
+    """
+    name = Path(path).name
+    return name.endswith(DATA_SUFFIXES) and ("test_" in name or "RUL_FD" in name)
+
+
+class ReadSpy:
+    """Every path given to ``pd.read_csv``, ``pd.read_parquet`` or ``open`` while it is active."""
+
+    def __init__(self) -> None:
+        self.paths: list[str] = []
+
+    def record(self, target: Any) -> None:
+        if isinstance(target, (str, bytes, os.PathLike)):
+            self.paths.append(os.fsdecode(target))
+
+    def test_split_reads(self) -> list[str]:
+        """The recorded paths that are test-split files (must be empty for training code)."""
+        return [p for p in self.paths if is_test_split_file(p)]
+
+
+@pytest.fixture
+def read_spy(monkeypatch: pytest.MonkeyPatch) -> ReadSpy:
+    """Record every file that is read through pandas or ``open`` (the reads still happen)."""
+    spy = ReadSpy()
+
+    def wrap(original: Callable[..., Any], keyword: str) -> Callable[..., Any]:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            spy.record(args[0] if args else kwargs.get(keyword))
+            return original(*args, **kwargs)
+
+        return wrapper
+
+    monkeypatch.setattr(pd, "read_csv", wrap(pd.read_csv, "filepath_or_buffer"))
+    monkeypatch.setattr(pd, "read_parquet", wrap(pd.read_parquet, "path"))
+    monkeypatch.setattr(builtins, "open", wrap(builtins.open, "file"))
+    monkeypatch.setattr(io, "open", wrap(io.open, "file"))  # pathlib.Path.open uses io.open
+    return spy

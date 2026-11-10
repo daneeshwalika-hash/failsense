@@ -7,6 +7,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +23,17 @@ from sklearn.metrics import average_precision_score
 from failsense import evaluate_test as et
 from failsense import freeze
 from failsense.config import load_config
+from failsense.data.schema import counter_columns, histogram_groups
 from failsense.models.boosters import STEP6_PARAMS
 from failsense.models.cost import alert_class_from_config, cost_matrix_from_config
 from failsense.models.q2_classes import make_multiclass_pipeline
 from failsense.models.register import TRUSTED_TYPES
+from failsense.models.validation_data import build_last_readout_frame
 
 MATRIX = cost_matrix_from_config(load_config())
 ALERT_CLASS = alert_class_from_config(load_config())
-SRC = Path(__file__).resolve().parents[1] / "src" / "failsense"
+REPO = Path(__file__).resolve().parents[1]
+SRC = REPO / "src" / "failsense"
 
 
 # --- metrics by hand ---------------------------------------------------------------------
@@ -176,6 +183,36 @@ def test_a_successful_guard_writes_the_lock_with_commit_and_manifest_hash(
         et.guard(guarded["config"], True, lambda c: [])  # the second call is refused
 
 
+def test_the_preflight_runs_after_the_verification_and_before_the_lock(
+    guarded: dict[str, Any],
+) -> None:
+    seen: dict[str, Any] = {}
+    et.guard(
+        guarded["config"], True, lambda c: [],
+        preflight=lambda m: seen.update(lock=guarded["lock"].exists(), commit=m["code_commit"]),
+    )  # fmt: skip
+    assert seen == {"lock": False, "commit": "abc"}  # the manifest is given, no lock yet
+    assert guarded["lock"].exists()
+
+
+def test_a_failing_preflight_creates_no_lock(guarded: dict[str, Any]) -> None:
+    def broken(manifest: Any) -> None:
+        raise et.EvaluationRefusedError("frozen artifact check failed (Q1 model): boom")
+
+    with pytest.raises(et.EvaluationRefusedError, match="frozen artifact check failed"):
+        et.guard(guarded["config"], True, lambda c: [], preflight=broken)
+    assert not guarded["lock"].exists()
+
+
+def test_the_preflight_is_not_reached_when_the_manifest_does_not_verify(
+    guarded: dict[str, Any],
+) -> None:
+    called = []
+    with pytest.raises(et.EvaluationRefusedError, match="does not verify"):
+        et.guard(guarded["config"], True, lambda c: ["changed"], preflight=called.append)
+    assert called == [] and not guarded["lock"].exists()
+
+
 def test_the_cli_refuses_without_the_flag_with_exit_code_2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(et, "load_config", lambda: {"paths": {"reports": "/nonexistent"}})
     with pytest.raises(SystemExit) as info:
@@ -239,6 +276,24 @@ def stack(
         "readouts": str(paths["operational_readouts"]),
         "specifications": str(paths["specifications"]), "labels": str(paths["labels"]),
     }  # fmt: skip
+    # --- fixture VALIDATION csv files (trucks 100..103) for the rehearsal
+    val_dir = tmp_path / "valfiles"
+    val_dir.mkdir()
+    val_paths = {}
+    for name in ("operational_readouts", "specifications"):
+        val_paths[name] = val_dir / f"validation_{name}.csv"
+        pd.read_parquet(processed / f"validation_{name}.parquet").to_csv(
+            val_paths[name], index=False
+        )
+    val_ids = sorted(pd.read_parquet(processed / "validation_specifications.parquet")["vehicle_id"])
+    val_paths["labels"] = val_dir / "validation_labels.csv"
+    pd.DataFrame({"vehicle_id": val_ids, "class_label": [0, 0, 2, 4]}).to_csv(
+        val_paths["labels"], index=False
+    )
+    config["datasets"]["scania"]["validation"] = {
+        "readouts": str(val_paths["operational_readouts"]),
+        "specifications": str(val_paths["specifications"]), "labels": str(val_paths["labels"]),
+    }  # fmt: skip
     full = make_cmapss_frame([30, 35, 40, 45, 50], seed=5)
     cut = pd.concat([g.iloc[: len(g) - 7] for _, g in full.groupby("engine")])
     write_cmapss_file(cut, test_dir / "test_FD001.txt")
@@ -274,7 +329,8 @@ def stack(
                               "logit_clip_eps": 1e-6}},  # fmt: skip
     }  # fmt: skip
     Path(config["freeze"]["manifest"]).write_text(json.dumps(manifest))
-    return {"config": config, "reports": reports, "test_dir": test_dir}
+    return {"config": config, "reports": reports, "test_dir": test_dir, "val_dir": val_dir,
+            "frozen": frozen}  # fmt: skip
 
 
 def test_a_full_run_on_fixtures_writes_the_result_and_closes_the_lock(
@@ -355,5 +411,313 @@ def test_the_rul_evaluation_uses_the_last_cycle_of_each_engine(stack: dict[str, 
     engines, rul = et.read_cmapss_test(stack["config"])
     assert len(rul) == 5 and engines["engine"].nunique() == 5
     manifest = json.loads(Path(stack["config"]["freeze"]["manifest"]).read_text())
-    result = et.evaluate_rul(stack["config"], manifest, 10)
+    frozen = et.load_frozen(stack["config"], manifest)
+    result = et.evaluate_rul(manifest, frozen, engines, rul, 10)
     assert result["n_engines"] == 5 and result["cap"] == 25
+
+
+# --- preflight: the frozen artifacts are loaded and checked before the lock ----------------
+def _manifest(stack: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(Path(stack["config"]["freeze"]["manifest"]).read_text())
+
+
+def _edit_json(path: Path, change: Callable[[dict[str, Any]], None]) -> None:
+    data = json.loads(path.read_text())
+    change(data)
+    path.write_text(json.dumps(data))
+
+
+def test_the_preflight_loads_every_frozen_artifact(stack: dict[str, Any]) -> None:
+    frozen = et.load_frozen(stack["config"], _manifest(stack))
+    assert frozen.q1_threshold == 0.4 and frozen.q1_calibrator["kind"] == "sigmoid"
+    assert frozen.q1_columns == list(frozen.q1_model.feature_names_in_)
+    assert frozen.q2_meta["best_constant_from_validation"] == "always_4"
+    assert set(frozen.rul_meta["columns_raw"]) < set(frozen.rul_meta["columns_rolling"])
+    assert hasattr(frozen.rul_lightgbm, "predict") and hasattr(frozen.rul_ridge, "predict")
+
+
+def _break_q1_folder(stack: dict[str, Any]) -> None:
+    shutil.rmtree(stack["frozen"] / "q1_model")
+
+
+def _break_q2_file(stack: dict[str, Any]) -> None:
+    (stack["frozen"] / "q2_model.skops").write_bytes(b"this is not a model file")
+
+
+def _break_rul_file(stack: dict[str, Any]) -> None:
+    (stack["frozen"] / "rul_lightgbm.skops").unlink()
+
+
+def _break_calibrator(stack: dict[str, Any]) -> None:
+    _edit_json(
+        Path(stack["config"]["freeze"]["manifest"]),
+        lambda m: m["q1"]["calibrator"].update(slope=-1.0),
+    )
+
+
+def _break_threshold(stack: dict[str, Any]) -> None:
+    _edit_json(Path(stack["config"]["freeze"]["manifest"]), lambda m: m["q1"].update(threshold=1.5))
+
+
+def _break_columns(stack: dict[str, Any]) -> None:
+    _edit_json(
+        stack["reports"] / "registry_q1.json",
+        lambda r: r.update(input_columns=r["input_columns"][::-1]),
+    )
+
+
+def _break_q2_meta(stack: dict[str, Any]) -> None:
+    _edit_json(stack["frozen"] / "q2_meta.json", lambda m: m.pop("prior_target"))
+
+
+def _break_rul_meta(stack: dict[str, Any]) -> None:
+    _edit_json(
+        stack["frozen"] / "rul_meta.json",
+        lambda m: m.update(columns_raw=m["columns_raw"][:-1]),
+    )
+
+
+BREAKERS = [
+    _break_q1_folder, _break_q2_file, _break_rul_file, _break_calibrator, _break_threshold,
+    _break_columns, _break_q2_meta, _break_rul_meta,
+]  # fmt: skip
+
+
+def _forbid_every_data_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a data file was read although a frozen artifact is broken")
+
+    for name in ("read_scania", "read_scania_test", "read_cmapss_test", "rehearsal_cmapss"):
+        monkeypatch.setattr(et, name, boom)
+
+
+@pytest.mark.parametrize("breaker", BREAKERS, ids=lambda f: f.__name__)
+def test_a_broken_artifact_stops_the_single_run_before_the_lock_and_before_any_read(
+    stack: dict[str, Any], monkeypatch: pytest.MonkeyPatch, breaker: Callable[..., None]
+) -> None:
+    breaker(stack)
+    _forbid_every_data_read(monkeypatch)
+    with pytest.raises(et.EvaluationRefusedError, match="frozen artifact check failed"):
+        et.run(stack["config"], True, 10, lambda c: [])
+    assert not (stack["reports"] / et.LOCK_FILE).exists()  # the run is NOT used up
+    assert not (stack["reports"] / et.RESULT_FILE).exists()
+
+
+@pytest.mark.parametrize("breaker", BREAKERS, ids=lambda f: f.__name__)
+def test_a_broken_artifact_stops_the_rehearsal_before_any_read(
+    stack: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    breaker: Callable[..., None],
+) -> None:  # fmt: skip
+    breaker(stack)
+    _forbid_every_data_read(monkeypatch)
+    out = tmp_path / "rehearsal.json"
+    with pytest.raises(et.EvaluationRefusedError, match="frozen artifact check failed"):
+        et.rehearse(stack["config"], 10, out)
+    assert not out.exists()
+
+
+def test_the_error_names_the_broken_artifact(stack: dict[str, Any]) -> None:
+    _break_q2_file(stack)
+    with pytest.raises(et.EvaluationRefusedError, match=r"\(Q2 model\)"):
+        et.load_frozen(stack["config"], _manifest(stack))
+
+
+def test_after_a_repaired_artifact_the_single_run_is_still_available(
+    stack: dict[str, Any],
+) -> None:
+    backup = (stack["frozen"] / "q2_model.skops").read_bytes()
+    _break_q2_file(stack)
+    with pytest.raises(et.EvaluationRefusedError):
+        et.run(stack["config"], True, 10, lambda c: [])
+    (stack["frozen"] / "q2_model.skops").write_bytes(backup)
+    result = et.run(stack["config"], True, 10, lambda c: [])  # no lock was left behind
+    assert result["q1"]["n_trucks"] == 4
+
+
+# --- the rehearsal on the validation split ---------------------------------------------------
+def test_the_rehearsal_reproduces_hand_computed_metrics_on_the_validation_fixture(
+    stack: dict[str, Any], tiny_pipeline: tuple[Any, Any, Any], tmp_path: Path
+) -> None:
+    out = tmp_path / "out" / "rehearsal.json"
+    result = et.rehearse(stack["config"], n_bootstrap=20, output=out)
+
+    # the expected numbers, computed here without evaluate_test
+    pipeline, frame, _ = tiny_pipeline
+    val = stack["val_dir"]
+    built = build_last_readout_frame(
+        pd.read_csv(val / "validation_operational_readouts.csv"),
+        pd.read_csv(val / "validation_specifications.csv"),
+        pd.read_csv(val / "validation_labels.csv"),
+        counter_columns(), histogram_groups(), 0.2,
+    )  # fmt: skip
+    risk = pipeline.predict_proba(built[list(frame.columns)])[:, 1]  # identity calibrator
+    classes = built["proximity_class"].to_numpy()
+    alert = risk >= 0.4
+    positive = classes >= 1
+    miss_cost = {2: 300, 4: 500}
+    cost = 7 * int((alert & ~positive).sum()) + sum(
+        miss_cost[c] for c, a in zip(classes, alert, strict=True) if c >= 1 and not a
+    )
+
+    q1 = result["q1"]
+    assert (q1["n_trucks"], q1["n_positives"]) == (4, 2)
+    assert q1["threshold"] == 0.4
+    assert q1["confusion"] == {
+        "tp": int((alert & positive).sum()), "fp": int((alert & ~positive).sum()),
+        "fn": int((~alert & positive).sum()), "tn": int((~alert & ~positive).sum()),
+    }  # fmt: skip
+    assert q1["cost"]["primary"]["model"] == cost
+    assert q1["cost"]["primary"]["never_alert"] == 300 + 500
+    assert q1["cost"]["primary"]["always_alert"] == 2 * 7
+    assert q1["pr_auc"]["value"] == pytest.approx(average_precision_score(positive, risk))
+    assert result["q2"]["n_trucks"] == 4 and result["q2"]["class_counts"] == [2, 0, 1, 0, 1]
+    assert result["mode"] == et.REHEARSAL_BANNER == "REHEARSAL \u2013 validation, not test"
+    assert result["split"] == "validation"
+    assert json.loads(out.read_text())["q1"]["confusion"] == q1["confusion"]
+
+
+def test_the_rehearsal_takes_no_lock_writes_no_result_file_and_needs_no_approval(
+    stack: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def no_verify(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the rehearsal must not verify the manifest (it hashes test files)")
+
+    monkeypatch.setattr(et, "verify_manifest", no_verify)
+    before = sorted(p.name for p in stack["reports"].iterdir())
+    et.rehearse(stack["config"], 10, tmp_path / "rehearsal.json")
+    assert sorted(p.name for p in stack["reports"].iterdir()) == before
+    assert not (stack["reports"] / et.LOCK_FILE).exists()
+    assert not (stack["reports"] / et.RESULT_FILE).exists()
+    # the single run is still available afterwards
+    assert et.run(stack["config"], True, 10, lambda c: [])["q1"]["n_trucks"] == 4
+
+
+def test_the_rehearsal_opens_no_test_split_file(
+    stack: dict[str, Any], read_spy: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the rehearsal called a reader of the test split")
+
+    for name in ("read_scania_test", "read_cmapss_test"):
+        monkeypatch.setattr(et, name, boom)
+    read_spy.paths.clear()
+    et.rehearse(stack["config"], 10, tmp_path / "rehearsal.json")
+    names = {Path(p).name for p in read_spy.paths}
+    # the spy really saw the reads of the rehearsal ...
+    assert {"validation_operational_readouts.csv", "validation_labels.csv", "train_FD001.txt",
+            "q2_meta.json"} <= names  # fmt: skip
+    # ... and none of them is a test-split file
+    assert read_spy.test_split_reads() == []
+    assert not any("test" in name for name in names)
+
+
+def test_the_spy_does_catch_the_readers_of_the_single_run(
+    stack: dict[str, Any], read_spy: Any
+) -> None:
+    """The guard above can fail: the real test readers are seen by the same spy."""
+    read_spy.paths.clear()
+    et.read_scania_test(stack["config"])
+    et.read_cmapss_test(stack["config"])
+    caught = {Path(p).name for p in read_spy.test_split_reads()}
+    assert caught == {
+        "test_operational_readouts.csv", "test_specifications.csv", "test_labels.csv",
+        "test_FD001.txt", "RUL_FD001.txt",
+    }  # fmt: skip
+
+
+def test_the_rehearsal_refuses_an_output_inside_the_repository(stack: dict[str, Any]) -> None:
+    inside = REPO / "reports" / "rehearsal_must_not_exist.json"
+    with pytest.raises(et.EvaluationRefusedError, match="nothing inside the repository"):
+        et.rehearse(stack["config"], 5, inside)
+    assert not inside.exists()
+    with pytest.raises(et.EvaluationRefusedError, match="nothing inside the repository"):
+        et.rehearsal_output_path(REPO)
+
+
+def _git_status() -> str:
+    done = subprocess.run(
+        ["git", "-C", str(REPO), "status", "--porcelain"], capture_output=True, text=True,
+        check=False,
+    )  # fmt: skip
+    return done.stdout if done.returncode == 0 else "git not available"
+
+
+def test_the_default_rehearsal_output_is_one_new_file_in_the_temp_folder_not_in_the_repo(
+    stack: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    temp = tmp_path / "system_temp"
+    temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    status_before = _git_status()
+    result = et.rehearse(stack["config"], 5)
+    files = list(temp.iterdir())
+    assert len(files) == 1 and files[0].name.startswith(et.REHEARSAL_FILE_PREFIX)
+    assert json.loads(files[0].read_text())["mode"] == result["mode"]
+    assert _git_status() == status_before  # nothing appeared in the repository
+
+
+def test_the_rehearsal_engines_are_cut_training_engines_with_a_known_remaining_life(
+    stack: dict[str, Any], make_cmapss_frame: Any
+) -> None:
+    engines, true_rul = et.rehearsal_cmapss(stack["config"])
+    lengths = [30, 35, 40, 45, 50, 32, 38, 42, 48, 36]  # the default mini training engines
+    cuts = [min(10 + (e % 10) * 10, n // 2) for e, n in enumerate(lengths, start=1)]
+    assert true_rul.tolist() == [float(c) for c in cuts]
+    kept = engines.groupby("engine")["cycle"].max().tolist()
+    assert kept == [n - c for n, c in zip(lengths, cuts, strict=True)]
+    assert engines.groupby("engine")["cycle"].min().eq(1).all()  # only the END is cut
+
+
+def test_the_rehearsal_reports_the_rul_part_as_an_in_sample_plumbing_check(
+    stack: dict[str, Any], tmp_path: Path
+) -> None:
+    result = et.rehearse(stack["config"], 10, tmp_path / "rehearsal.json")
+    assert result["rul"]["n_engines"] == 10
+    assert set(result["rul"]["models"]) == {"lightgbm_rolling", "ridge_raw", "mean_predictor"}
+    assert any("in-sample" in note for note in result["notes"])
+    assert result["frozen_files_match_manifest"] is None  # the fixture manifest has no hashes
+
+
+def test_the_rehearsal_needs_a_manifest(stack: dict[str, Any], tmp_path: Path) -> None:
+    Path(stack["config"]["freeze"]["manifest"]).unlink()
+    with pytest.raises(et.EvaluationRefusedError, match="make freeze"):
+        et.rehearse(stack["config"], 5, tmp_path / "rehearsal.json")
+
+
+def test_read_scania_knows_only_the_two_labelled_splits(stack: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="'validation' or 'test'"):
+        et.read_scania(stack["config"], "train")
+
+
+def test_the_cli_rehearsal_flag_starts_the_rehearsal_and_never_the_single_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, Any] = {}
+    monkeypatch.setattr(et, "load_config", lambda: {"fixture": True})
+    monkeypatch.setattr(et, "rehearse", lambda c, n, o: calls.update(args=(c, n, o)) or {})
+    monkeypatch.setattr(et, "run", lambda *a, **k: pytest.fail("the single run must not start"))
+    et.main(["--rehearse-on-validation", "--n-bootstrap", "7", "--output", "/tmp/r.json"])
+    assert calls["args"] == ({"fixture": True}, 7, Path("/tmp/r.json"))
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--rehearse-on-validation", "--approved-single-run"], ["--output", "/tmp/r.json"]],
+)
+def test_the_cli_rejects_contradicting_flags(
+    argv: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(et, "run", lambda *a, **k: pytest.fail("the single run must not start"))
+    monkeypatch.setattr(et, "rehearse", lambda *a, **k: pytest.fail("no rehearsal either"))
+    with pytest.raises(SystemExit) as info:
+        et.main(argv)
+    assert info.value.code == 2
+
+
+def test_make_rehearse_exists_is_in_make_help_and_never_approves_the_single_run() -> None:
+    makefile = (REPO / "Makefile").read_text(encoding="utf-8")
+    target = next(line for line in makefile.splitlines() if line.startswith("rehearse:"))
+    assert "## " in target and "VALIDATION" in target  # shown by `make help`
+    assert "scripts/evaluate_test_once.py --rehearse-on-validation" in makefile
+    assert " rehearse " in makefile.splitlines()[0]  # .PHONY
+    assert "--approved-single-run" not in makefile  # no make target can start the single run
