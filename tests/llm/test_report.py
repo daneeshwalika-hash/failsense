@@ -430,7 +430,8 @@ def test_the_accepted_but_wrong_average_comparison_is_now_rejected() -> None:
     phrases = rp.comparison_phrases(rp.report_texts(report))
     assert phrases and any("Durchschnitt" in p for p in phrases)
     problems = rp.validate_report(report, REAL_DATA, "erhöht")
-    assert problems == [problems[0]] and "compares numbers" in problems[0]
+    assert len(problems) == 2
+    assert "compares numbers" in problems[0] and "speaks of an average" in problems[1]
 
 
 def test_a_comparison_by_the_llm_is_retried_and_the_correct_sentence_comes_from_the_code() -> None:
@@ -443,29 +444,84 @@ def test_a_comparison_by_the_llm_is_retried_and_the_correct_sentence_comes_from_
         "Das berechnete Risiko von 4.4 % liegt 0.9 Prozentpunkte"
     )
     assert (
-        "2.3 Prozentpunkte über dem Durchschnitt aller Fahrzeuge (2.1 %)" in result.report.summary
+        "2.3 Prozentpunkte über dem Startwert des Modells (SHAP-Basiswert, 2.1 %)"
+        in result.report.summary
     )
-    assert "2.1% über dem Durchschnitt" not in result.report.summary
+    assert "Durchschnitt" not in result.report.summary
 
 
 def test_the_comparison_sentence_by_hand() -> None:
     data = rp.ReportInput(0.0443, True, 0.0353, 0.0209, [])
     assert rp.comparison_sentence(data) == (
         "Das berechnete Risiko von 4.4 % liegt 0.9 Prozentpunkte über der Alarmschwelle (3.5 %) "
-        "und 2.3 Prozentpunkte über dem Durchschnitt aller Fahrzeuge (2.1 %)."
+        "und 2.3 Prozentpunkte über dem Startwert des Modells (SHAP-Basiswert, 2.1 %)."
     )
     below = rp.ReportInput(0.0100, False, 0.0353, 0.0209, [])
     sentence = rp.comparison_sentence(below)
     assert "2.5 Prozentpunkte unter der Alarmschwelle (3.5 %)" in sentence
-    assert "1.1 Prozentpunkte unter dem Durchschnitt aller Fahrzeuge (2.1 %)" in sentence
+    assert "1.1 Prozentpunkte unter dem Startwert des Modells (SHAP-Basiswert, 2.1 %)" in sentence
     same = rp.ReportInput(0.0353, True, 0.0353, 0.0353, [])
     assert "auf der Höhe der Alarmschwelle (3.5 %)" in rp.comparison_sentence(same)
+    assert (
+        "auf der Höhe des Startwerts des Modells (SHAP-Basiswert, 3.5 %)"
+        in rp.comparison_sentence(same)
+    )
+
+
+# --- the start value is the SHAP base value, never "the average of all vehicles" (F05) ----------
+def test_no_text_built_in_code_calls_the_start_value_an_average() -> None:
+    level = rp.risk_level_for(REAL_DATA.risk, REAL_DATA.threshold, REAL_DATA.alert)
+    message = rp.build_user_message(REAL_DATA, level)
+    assert "Startwert des Modells (SHAP-Basiswert)" in message and "2.1%" in message
+    fallback = rp.with_comparison(rp.fallback_report(REAL_DATA), REAL_DATA)
+    for text in (message, rp.comparison_sentence(REAL_DATA), rp.report_texts(fallback)):
+        assert "durchschnitt" not in text.lower() and "aller fahrzeuge" not in text.lower()
+    # the template report passes the validator it would be judged by
+    assert rp.average_phrases(rp.report_texts(rp.fallback_report(REAL_DATA))) == []
+
+
+def test_the_prompt_names_the_start_value_and_no_average() -> None:
+    prompt = resolve_path(load_config()["llm"]["prompt_path"]).read_text(encoding="utf-8")
+    assert prompt.count("Startwert des Modells") == 2
+    assert "durchschnitt" not in prompt.lower()
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Das Durchschnittsrisiko beträgt 2.1 %.", "Der Durchschnitt aller Fahrzeuge ist höher.",
+     "Im Mittel sind es 2.1 %.", "Der Mittelwert der Flotte ist bekannt.",
+     "Das durchschnittliche Risiko ist gering.", "Der Durchschnitt (2.1 %) ist niedrig.",
+     "Der Flottendurchschnitt ist niedrig."],
+)  # fmt: skip
+def test_an_llm_text_that_presents_a_number_as_an_average_is_rejected(text: str) -> None:
+    assert rp.average_phrases(text)
+    report = rp.MaintenanceReport(**{**ACCEPTED_WRONG, "summary": f"Die Lage ist bekannt; {text}"})
+    problems = rp.validate_report(report, REAL_DATA, "erhöht")
+    assert any("speaks of an average" in p for p in problems)
+
+
+def test_ordinary_german_text_is_not_mistaken_for_an_average() -> None:
+    for text in (
+        "Das Fahrzeug bei mittlerer Auslastung zeitnah prüfen.",
+        "Der Startwert des Modells beträgt 2.1 %.",
+        "Die durchschnittliche Klasse des Histogramms 397 erhöht das berechnete Risiko.",
+        "Histogramm 397: mittlere Klasse (Wert 12.3) senkt das berechnete Risiko.",
+    ):
+        assert rp.average_phrases(text) == [], text
+
+
+def test_the_api_field_says_that_the_start_value_is_not_the_fleet_average() -> None:
+    from failsense.api.schemas import ExplainResponse
+
+    description = ExplainResponse.model_fields["baseline_risk"].description
+    assert "SHAP base value" in description and "NOT the average risk of the fleet" in description
 
 
 @pytest.mark.parametrize(
     "text",
     ["Das Risiko liegt über der Schwelle.", "Die Alarmschwelle wird überschritten.",
      "Das ist höher als der Durchschnitt.", "Es sind 0.9 Prozentpunkte mehr.",
+     "Das Risiko liegt über dem Startwert des Modells.", "Der Basiswert ist niedriger.",
      "Weniger als der Durchschnitt aller Fahrzeuge."],
 )  # fmt: skip
 def test_comparison_phrases_are_found(text: str) -> None:

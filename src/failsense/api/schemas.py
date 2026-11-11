@@ -196,7 +196,12 @@ class ExplainResponse(PredictResponse):
     """Risk, alert and the strongest factors behind them."""
 
     baseline_risk: float = Field(
-        ge=0, le=1, description="Calibrated risk of an 'average' truck (SHAP base value)."
+        ge=0,
+        le=1,
+        description=(
+            "Start value of the model: the SHAP base value as a calibrated risk, from which the "
+            "factors raise or lower the risk. NOT the average risk of the fleet."
+        ),
     )
     factors: list[FactorOut]
     report: ReportOut | None = Field(

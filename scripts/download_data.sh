@@ -7,7 +7,7 @@
 #            extracts, flattens and verifies the files
 #
 # Idempotent: a dataset is skipped if its marker file already exists.
-# Bosch CNC Machining (Should item) is added on 09.11.
+# Bosch CNC Machining was cut from v1.0 (docs/adr/0003-cut-bosch-cnc.md); it is not downloaded.
 set -euo pipefail
 
 # Always work relative to the repo root, wherever the script is called from.

@@ -1,6 +1,6 @@
 """Cross-cutting data-leakage tests (``pytest -m leakage`` runs every leakage test).
 
-The rules are in ``CLAUDE.md`` section 5 and ``docs/problem_framing.md`` section 4.
+The rules are in ``docs/problem_framing.md`` section 4 ("Data leakage").
 Most leakage tests live next to the code they protect and carry the same marker;
 the tests here check rules that span several modules, end to end, on a tiny
 SCANIA-shaped dataset (see ``tests/conftest.py``) - never on the raw data.

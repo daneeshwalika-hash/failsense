@@ -175,7 +175,8 @@ make serve          # scripts/serve.sh: loads models:/failsense-q1@candidate, do
   order of the items, every item logged; one invalid item rejects the whole request (422 names the index).
 * `POST /explain` - the same body plus `top_k` (1-20, default 5). Returns the risk, the alert and the `top_k`
   inputs that moved the calibrated risk most (SHAP, contribution in calibrated log-odds, `raises` / `lowers`) and the
-  `baseline_risk` of an average truck: `logit(risk) = logit(baseline_risk) + sum of all contributions`. It describes
+  model's start value `baseline_risk` (the SHAP base value as a calibrated risk, **not** the fleet's average risk):
+  `logit(risk) = logit(baseline_risk) + sum of all contributions`. It describes
   what the model uses, not what causes a failure; explanation requests are not written to the prediction log.
 
 The service refuses to start if the calibration summary was made for another model than
@@ -189,9 +190,11 @@ docker run --rm -p 8000:8000 -v "$PWD/mlflow.db:/app/mlflow.db" \
   -v "$PWD/mlartifacts:$PWD/mlartifacts" failsense-api
 ```
 
-Multi-stage image (uv, `--locked --no-dev`), `libgomp1` for LightGBM/XGBoost, CPU-only
-`xgboost-cpu`, runs as a non-root user (uid 10001). It contains code, config and the calibration
-summary, **not** the model or any data: the model is loaded from the MLflow registry at startup.
+Multi-stage image (uv, `uv sync --locked --no-default-groups`: no dev tools, no Streamlit), `libgomp1` for
+LightGBM/XGBoost, CPU-only `xgboost-cpu`, runs as a non-root user (uid 10001). It contains code, config, the
+calibration summary and one small bundled copy of model version 1 (`models/failsense-q1`, 1.2 MB) that is used only to
+seed an empty MLflow registry; it contains **no data**. The served model is always loaded from the MLflow registry at
+startup, never from the bundle directly.
 MLflow stores artifact paths as absolute URIs, hence the second mount at the host path;
 `docker compose` with an MLflow server (planned) removes this detail. CI builds the image and
 imports the app inside it.
@@ -266,8 +269,10 @@ docker compose up --build   # or: make compose-up
 docker compose down         # stop (named volumes keep the registry and the prediction log)
 ```
 
-A clean machine works with nothing but the repository and `./data/processed/scania` (the validation Parquet files
-the dashboard reads, read-only):
+A clean machine works with nothing but the repository and the three validation Parquet files in
+`./data/processed/scania` (`validation_operational_readouts`, `validation_specifications`, `validation_labels`; created
+by `make parquet`). Only these three files are mounted into the dashboard container, read-only; no test file is
+visible there:
 
 * `mlflow` - the registry, started from the API image so the server and client versions cannot differ.
   `MLFLOW_SERVER_ALLOWED_HOSTS=mlflow:5000,localhost:*,127.0.0.1:*`: MLflow >= 3.5 validates the `Host` header

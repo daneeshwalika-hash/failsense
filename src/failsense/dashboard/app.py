@@ -88,8 +88,9 @@ def _show_report(data: dict) -> None:
     factors["value"] = factors["value"].map(_format_value)
     st.dataframe(factors, hide_index=True, width="stretch")
     st.caption(
-        f"Basisrisiko eines durchschnittlichen Fahrzeugs: {data['baseline_risk']:.1%}. "
-        "Beiträge in kalibrierten Log-Odds; die Variablen sind anonymisiert."
+        f"Startwert des Modells (SHAP-Basiswert): {data['baseline_risk']:.1%}; das ist nicht das "
+        "mittlere Risiko der Flotte. Beiträge in kalibrierten Log-Odds; die Variablen sind "
+        "anonymisiert."
     )
 
 

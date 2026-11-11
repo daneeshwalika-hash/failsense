@@ -79,6 +79,10 @@ class Explanation:
 
     ``logit(risk) = logit(baseline_risk) + sum(contribution of ALL inputs)``; ``factors`` holds the
     ``k`` largest by absolute size, so their sum is only part of the total.
+
+    ``baseline_risk`` is the model's START VALUE: the SHAP base value (the mean log-odds of the
+    model on its training rows) passed through the calibrator. It is not the average risk of the
+    fleet, because the probability at a mean log-odds is not the mean probability.
     """
 
     prediction: Prediction
@@ -245,6 +249,7 @@ class ModelService:
             Factor(name, _json_value(value), float(contribution))
             for name, value, contribution in raw
         ]
+        # the start value of the explanation (SHAP base value), NOT the fleet's average risk
         base_margin = float(self.explainer.base_value)
         baseline = float(
             apply_sigmoid_parameters(self.calibrator, [1.0 / (1.0 + np.exp(-base_margin))])[0]
