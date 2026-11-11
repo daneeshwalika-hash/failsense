@@ -6,7 +6,9 @@ paths:
 
 datasets:
   # SCANIA Component X (real truck fleet data, main dataset).
-  # Source: https://doi.org/10.5878/jvb5-d390 - manual download, see scripts/download_data.sh
+  # Source: SND / researchdata.se, Version 3 (2025-04-09), https://doi.org/10.5878/bnh5-ka77, licence CC BY 4.0
+  # (Version 2, https://doi.org/10.5878/jvb5-d390, has the same CSV files). Manual download, see
+  # scripts/download_data.sh
   scania:
     dir: data/raw/scania
     # Parquet copies of the CSV files below (make parquet). Raw CSV files stay unchanged.

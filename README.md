@@ -114,7 +114,7 @@ text revised 11.11.2026). The sections below are the short version.
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
 5-fold cross validation, folds grouped by truck, 5 random cut-offs per truck, PR-AUC
 (average precision). The test split has not been used for any model, threshold, calibrator or feature choice
-(what exactly has read the test files: [Data](#data)).
+(what exactly has read the test files: [Data & Licenses](#data--licenses)).
 
 ![Q1 PR-AUC of the models](reports/figures/results_q1_model_comparison.png)
 ![Q1 total cost on the official validation](reports/figures/results_q1_cost.png)
@@ -402,7 +402,7 @@ the single run nothing may be written into the repository (`git status` must be 
 ## License
 
 The code of this repository is released under the [MIT License](LICENSE), Copyright (c) 2026 Daneesh Walika.
-The datasets are not part of the repository and keep their own terms (section "Data").
+The code is MIT-licensed; the datasets keep their own licences ([Data & Licenses](#data--licenses)).
 
 ## Future work
 
@@ -412,11 +412,13 @@ The datasets are not part of the repository and keep their own terms (section "D
   Reasons and the plan to resume: [ADR 0003](docs/adr/0003-cut-bosch-cnc.md). The dataset is not
   used yet, so it is not listed under Data.
 
-## Data
+## Data & Licenses
+
+**The code is MIT-licensed; the datasets keep their own licences.** No raw data is part of this repository.
 
 | Dataset | Used for | Source | Licence / terms |
 | --- | --- | --- | --- |
-| SCANIA Component X (real truck fleet) | Failure classification, cost-based threshold, anomaly detection | Swedish National Data Service (SND), [doi:10.5878/jvb5-d390](https://doi.org/10.5878/jvb5-d390) | Open access; cite the dataset and the paper below |
+| SCANIA Component X (real truck fleet) | Failure classification, cost-based threshold, anomaly detection | Swedish National Data Service (SND, catalogue on researchdata.se), publisher Scania CV AB. **Version 3** (2025-04-09), [doi:10.5878/bnh5-ka77](https://doi.org/10.5878/bnh5-ka77) | **[Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/)**, open access: sharing and adapting are allowed with attribution; cite the dataset and the paper below |
 | Turbofan Engine Degradation Simulation (C-MAPSS, FD001) | Remaining useful life (RUL) | NASA Prognostics Data Repository, [PCoE data set page](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) (also [data.nasa.gov](https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data)) | **No licence stated** on the NASA pages (the catalog entry says "License not specified"); users are asked to acknowledge the repository and the data donators, and use the data at their own risk. Simulated data, not real engines |
 
 Raw data is never committed; `scripts/download_data.sh` prepares it in `data/raw/`.
@@ -441,9 +443,11 @@ Why real data instead of the popular synthetic AI4I 2020 dataset: see
 - Kharazian, Z., Lindgren, T., Magnússon, S., Steinert, O., & Andersson Reyna, O. (2025).
   SCANIA Component X dataset: a real-world multivariate time series dataset for predictive
   maintenance. *Scientific Data*, 12, 493. https://doi.org/10.1038/s41597-025-04802-6
-- Lindgren, T., Steinert, O., Andersson Reyna, O., Kharazian, Z., & Magnússon, S. (2024).
+- Lindgren, T., Steinert, O., Andersson Reyna, O., Kharazian, Z., & Magnússon, S. (2025).
   SCANIA Component X Dataset: A Real-World Multivariate Time Series Dataset for Predictive
-  Maintenance [Data set]. Scania CV AB. https://doi.org/10.5878/jvb5-d390
+  Maintenance (Version 3) [Data set]. Scania CV AB. https://doi.org/10.5878/bnh5-ka77
+  (the dataset used here; licence CC BY 4.0. Previous version: Version 2, 2024,
+  https://doi.org/10.5878/jvb5-d390, which is the DOI the paper cites.)
 - Saxena, A., & Goebel, K. (2008). *Turbofan Engine Degradation Simulation Data Set*. NASA
   Prognostics Data Repository, NASA Ames Research Center, Moffett Field, CA
   (citation text as given on the NASA PCoE data set page; no DOI is stated).
@@ -454,3 +458,23 @@ Why real data instead of the popular synthetic AI4I 2020 dataset: see
 Acknowledgment: the C-MAPSS data was provided by the NASA Ames Prognostics Center of
 Excellence (PCoE) through the NASA Prognostics Data Repository; thanks to NASA and the
 donators of the data. NASA states that users employ the data at their own risk.
+
+### Dataset versions, licences and what this repository contains (checked 11.11.2026)
+
+- **SCANIA version.** The catalogue has two public versions: Version 2 (2024-07-03, DOI 10.5878/jvb5-d390, now
+  marked deprecated) and Version 3 (2025-04-09, DOI 10.5878/bnh5-ka77, its successor in the DataCite record). The
+  archive used here is the one the catalogue page serves, Version 3 (it contains the documentation file
+  `Scania_Component_X.pdf` of that version). According to the checksums in the two catalogue records the CSV data
+  files are the same in both versions (for example `train_operational_readouts.csv`, SHA-256 `e01cb0bd...3c715`, the
+  value `scripts/download_data.sh` checks); the versions differ in the documentation file. The data descriptor paper
+  cites the Version 2 DOI.
+- **SCANIA licence.** CC BY 4.0, as recorded for both versions in the catalogue and in DataCite
+  (`https://creativecommons.org/licenses/by/4.0/`). The paper itself is also published under CC BY 4.0.
+- **C-MAPSS terms.** The NASA PCoE page states no licence, asks publications to acknowledge the repository and
+  the donators (done above) and says the data are used at the user's own risk; the data.nasa.gov catalogue entry
+  says "License not specified".
+- **Derived material in this repository.** The bundled model `models/failsense-q1/model.skops`, the result files in
+  `reports/` and the figures were produced from the SCANIA Component X dataset (and the RUL results from C-MAPSS).
+  They contain learned parameters and aggregate results, no rows of the data. CC BY 4.0 allows such adapted material
+  with attribution; the citations above are that attribution (Lindgren et al., 2025, CC BY 4.0, changes: a model was
+  trained and results were computed from the data).

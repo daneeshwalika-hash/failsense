@@ -29,7 +29,8 @@ The **test split has not been used**; the final test evaluation is pending (sche
 ## 3. Data
 
 * **Training:** SCANIA Component X, training split, 23,549 trucks; `k5` = 5 random cut-offs per truck, 117,031
-  rows, 2.8 % positive (Kharazian et al., *Scientific Data* 12, 493, 2025; DOI 10.5878/jvb5-d390).
+  rows, 2.8 % positive (Kharazian et al., *Scientific Data* 12, 493, 2025; dataset Version 3, DOI
+  10.5878/bnh5-ka77, licence CC BY 4.0).
 * **Evaluation:** the official validation split, one row per truck (its last readout): 5,046 trucks, **136
   positives (2.70 %)**. Used for the threshold and for the numbers below, never for fitting.
 * **Test split:** not used for any model, threshold, calibrator or feature choice; to be evaluated once at the
@@ -37,6 +38,13 @@ The **test split has not been used**; the final test evaluation is pending (sche
   schema checks; the test labels have never been loaded for an analysis. Details: `docs/test_evaluation_plan.md`,
   section 1a.)
 * The data are real fleet data with anonymised variables; no personal data.
+* **Attribution (data licence).** This model, including the bundled file `models/failsense-q1/model.skops`, was
+  trained on the *SCANIA Component X Dataset* (Lindgren, T., Steinert, O., Andersson Reyna, O., Kharazian, Z., &
+  Magnússon, S., 2025, Version 3, Scania CV AB, https://doi.org/10.5878/bnh5-ka77), which is licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The model file is adapted material in the sense of
+  that licence: it holds learned parameters (tree splits, imputation medians, category names), not rows of the
+  data. The authors and Scania CV AB do not endorse this model. The code of the project is MIT-licensed; the
+  dataset keeps its own licence.
 
 ## 4. Performance (official validation, 5,046 trucks, 136 positives)
 

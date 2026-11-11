@@ -16,6 +16,7 @@ RAW_DIR="${REPO_ROOT}/data/raw"
 
 CMAPSS_URL="https://phm-datasets.s3.amazonaws.com/NASA/6.+Turbofan+Engine+Degradation+Simulation+Data+Set.zip"
 
+# SCANIA Component X: the catalogue page serves Version 3 (2025-04-09, doi:10.5878/bnh5-ka77), CC BY 4.0.
 SCANIA_PAGE="https://researchdata.se/en/catalogue/dataset/2024-34"
 SCANIA_FILES=(
     train_operational_readouts.csv
