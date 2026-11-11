@@ -1,4 +1,8 @@
-# Results — FailSense (status 09.11.2026)
+# Results — FailSense (results of 09.11.2026, text revised 11.11.2026)
+
+> **Test results:** Final test evaluation pending — scheduled after course review (17.11.2026). The single, frozen
+> evaluation on the test splits ([test_evaluation_plan.md](test_evaluation_plan.md)) will be added here as its own
+> section, whatever it shows. Every number below comes from cross validation or from the official validation split.
 
 All numbers below come from files in `reports/` or from the MLflow runs (experiments `failsense-q1-binary`,
 `failsense-rul`, `failsense-q2-classes`, `failsense-anomaly`, `failsense-unsupervised`,
@@ -32,7 +36,7 @@ Source: `reports/calibration_q1_summary.json` (`deployment_choice`, `primary_bas
 not resolved (section 11). Q4: anomaly detectors on healthy trucks are close to a random ranking; as an extra
 feature +0.0068 PR-AUC with an interval that includes 0 (section 12). Q3 RUL: Ridge 21.6 -> LightGBM with rolling
 features 18.1 RMSE (section 8). The MLP does not beat logistic regression or XGBoost (section 3). Serving: API,
-dashboard, prediction log, drift check (misses a x3 counter shift), docker compose (not started here), coverage
+dashboard, prediction log, drift check (misses a x3 counter shift), docker compose (started on 09.11), coverage
 83 % (section 13). Retraining: the tuned challenger is not clearly better than the champion (section 14).
 
 ## 2. Evaluation protocol
@@ -342,12 +346,19 @@ file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision
 - **The drift check misses a x3 shift of the counters with 200 rows** (PSI 0.075, KS p 0.012, although the alert
   rate rose from 55 % to 70 %); it flags x10 and above. It watches the output only and sees no input drift
   (section 13, ADR 0006; Evidently was rejected on 09.11).
-- **Open as of 09.11:** the **test split is unused** (one evaluation at the very end, with Daneesh's approval);
-  the German report has never been produced by a real LLM (Ollama is not installed on the development
-  machine); the docker compose stack has never been started (Docker Desktop was not running; CI builds the
-  images); the drift check is output-only and misses small shifts (section 13); MLP, LightGBM and the
-  anomaly feature are untuned or unconfirmed; the cost matrix is the challenge's, not a fleet's.
-  Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
+- **Open as of 11.11:** the **final test evaluation is pending** (scheduled after course review, 17.11.2026: one
+  frozen evaluation, with Daneesh's approval); the drift check is output-only and misses small shifts
+  (section 13); MLP, LightGBM and the anomaly feature are untuned or unconfirmed; the cost matrix is the
+  challenge's, not a fleet's. Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
+- **The German LLM report (done on 09.11, with a lesson).** The docker compose stack was started on a fresh volume
+  and a local LLM (`qwen2.5:7b`, CPU, 69-110 s per report) wrote the report three times. The first answer passed
+  every check of that time (valid JSON, only given factors, German) and still contained invented numbers: a wrong
+  difference ("0.3 % über der Alarmschwelle" for 4.4 % against 3.5 %) and log-odds contributions written as
+  percent. Fixes of the same evening: every percentage in the text must be a given fact, comparisons are written by
+  code from the unrounded facts, and an answer that fails twice is replaced by the deterministic template (in the
+  third live run the first attempt was rejected, the second accepted). The wording of 11.11 ("Startwert des
+  Modells" instead of an average, in `POST /explain` and the report) is tested with a fake client and has not been run against the live
+  LLM again.
 
 ## 10. Unsupervised view of the training trucks (PCA, KMeans; 09.11)
 

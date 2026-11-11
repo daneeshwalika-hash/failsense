@@ -4,7 +4,8 @@
 
 End-to-end predictive maintenance system on real truck fleet data: predicts component failures, estimates remaining useful life (RUL), detects anomalies and explains its predictions.
 
-> Work in progress — first release planned for November 2026.
+> **Status (11.11.2026):** version 1.0, code complete. **Final test evaluation pending — scheduled after course
+> review (17.11.2026).** Every number below comes from cross validation or from the official validation split.
 
 ## Requirements
 
@@ -34,6 +35,49 @@ make help       # all targets
 
 `make leakage` runs only the data-leakage tests (`pytest -m leakage`).
 
+### From zero to a running API
+
+*Verified on a clean clone: pending (17.11.2026). The order below is read from the `Makefile` and the code.*
+
+The API serves `models:/failsense-q1@candidate` from the **local MLflow registry** (`mlflow.db` and `mlartifacts/`,
+both git-ignored). A fresh clone has no registry, so `make serve` alone cannot work. There are three ways to get one.
+
+**A. With the data (the full path, trains the served model again):**
+
+```bash
+make setup       # 1. uv sync + pre-commit hooks
+make data        # 2. C-MAPSS download; SCANIA from the zip you copied to data/raw/scania/ (see "Data")
+make parquet     # 3. CSV -> Parquet copies in data/processed/scania/
+make validate    # 4. data contract of all SCANIA files
+make train       # 5. logistic-regression reference -> MLflow (optional for serving: a first end-to-end check)
+make register    # 6. fits the chosen XGBoost recipe (reports/evaluate_q1_winner.json) on the training split
+                 #    and registers it as failsense-q1, alias "candidate"
+make calibrate   # 7. calibrator + cost-based threshold for THIS registered model (official validation)
+make serve       # 8. the API on http://127.0.0.1:8000 (docs: /docs)
+make dashboard   #    optional, second terminal: Streamlit on http://127.0.0.1:8501
+```
+
+**After `make register` on a new machine always run `make calibrate`.** A new registry numbers the newly trained
+model "version 1" again, and the API's guard compares that version number, not the model itself; the committed
+calibrator and threshold belong to the author's model, and only `make calibrate` ties them to yours.
+`make register` and `make calibrate` rewrite files in `reports/` (`registry_q1.json`, `calibration_q1_*`,
+`threshold_q1.csv`, two figures): on your clone `git status` is not clean afterwards, which is expected.
+`make tune` and `make evaluate` (hyperparameter search and the choice of the recipe) are not needed: their result
+is committed.
+
+**B. Without training (the bundled model, exactly the one the committed calibrator belongs to):**
+
+```bash
+make setup
+uv run python -m failsense.models.seed_registry   # registers models/failsense-q1 (SHA-256 checked) as version 1
+make serve
+```
+
+No data is needed for the API itself; the dashboard additionally needs the validation Parquet files (steps 2-3 of A).
+
+**C. With Docker:** `docker compose up --build` starts an MLflow server, the same seed step, the API and the
+dashboard (section "Docker compose" below).
+
 Dependency notes:
 
 - **XGBoost is installed as `xgboost-cpu`** (CPU-only build, same `import xgboost`). The plain
@@ -50,14 +94,21 @@ Dependency notes:
 * **Q2 does not resolve the urgency classes:** 88 % of healthy trucks and all failures land in class 4.
 * **The anomaly detectors (Q4) are near random** (PR-AUC 0.030-0.032 vs. 0.027).
 * **The drift check misses a x3 shift of the counters with 200 rows** (flags x10 and above); output drift only.
-* **Not yet done:** the test split is unused; no real LLM report has been generated; the docker compose stack has
-  not been started by the author. Details: [docs/results.md](docs/results.md) section 9 and the
-  [model card](docs/model_card.md).
+* **The test split has not been evaluated.** Final test evaluation pending — scheduled after course review
+  (17.11.2026). The validation split was also used to choose the alert threshold, so its numbers are slightly
+  optimistic.
+* **The German LLM report needs its checks.** The first real answer of the local LLM passed the schema, factor and
+  language checks and still contained invented numbers (section "German maintenance report").
+* Details: [docs/results.md](docs/results.md) section 9 and the [model card](docs/model_card.md).
 
 ## Results so far
 
-**Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (status 09.11.2026).
-The sections below are the short version.
+**Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (results of 09.11.2026,
+text revised 11.11.2026). The sections below are the short version.
+
+> **Test results:** Final test evaluation pending — scheduled after course review (17.11.2026). The single, frozen
+> evaluation of Q1, Q2 and RUL on the test splits will be reported here and in `docs/results.md`, whatever it shows
+> (section "Final test evaluation" below).
 
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
 5-fold cross validation, folds grouped by truck, 5 random cut-offs per truck, PR-AUC
@@ -133,7 +184,9 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   nothing was re-registered.
 - **Served model:** the API, dashboard, Docker image, prediction log and stream simulator are
   described in the sections below; they use the Q1 model and its calibrated threshold.
-- Not done yet: Q5 (LLM report). No target for the total cost is set.
+- **Q5 (why, and what should the technician do?)** is built: `POST /explain` returns the top SHAP factors and,
+  on request, a checked German maintenance report from a local LLM (sections below). No target for the total cost
+  is set.
 
 **Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
 `GroupKFold` by engine, RUL capped at 125 cycles, RMSE in cycles (lower is better); the
@@ -195,8 +248,8 @@ LightGBM/XGBoost, CPU-only `xgboost-cpu`, runs as a non-root user (uid 10001). I
 calibration summary and one small bundled copy of model version 1 (`models/failsense-q1`, 1.2 MB) that is used only to
 seed an empty MLflow registry; it contains **no data**. The served model is always loaded from the MLflow registry at
 startup, never from the bundle directly.
-MLflow stores artifact paths as absolute URIs, hence the second mount at the host path;
-`docker compose` with an MLflow server (planned) removes this detail. CI builds the image and
+MLflow stores artifact paths as absolute URIs, hence the second mount at the host path; the
+docker compose stack below (MLflow server + seed step) removes this detail. CI builds the image and
 imports the app inside it.
 
 ## Dashboard
@@ -225,7 +278,8 @@ uv run python scripts/simulate_stream.py --interval 0.2 --drift-start 60 --drift
 
 The simulator replays the last readouts of validation trucks (each with its previous readout) in
 random order; `--drift-start` scales the counters up gradually, a fleet used harder than the
-training data, which the drift check (planned) should detect. The test split is never used.
+training data, for the drift check below to detect (with 200 rows it flags a x10 shift and misses a x3
+shift). The test split is never used.
 
 ### German maintenance report (local LLM)
 
@@ -245,8 +299,18 @@ ollama serve                                     # or: sudo systemctl start olla
 ```
 
 `OLLAMA_BASE_URL` overrides the address (e.g. `http://host.docker.internal:11434` from a container);
-`llm.enabled: false` returns only the template report. **Status:** tested against a fake Ollama client and the
-real API without Ollama (fallback path); a real LLM answer has not been generated yet on this machine.
+`llm.enabled: false` returns only the template report.
+
+**What the real LLM taught us (09.11.2026, `qwen2.5:7b` on CPU, 69-110 s per report).** The first real answer was
+valid JSON, cited only given factors and was German, so every check passed, and it still contained invented
+numbers: "0.3 % über der Alarmschwelle" for 4.4 % against 3.5 % (the difference is 0.9 points) and log-odds
+contributions written as percent. The validator therefore also checks numbers: every percentage in the text must be
+one of the given facts, the LLM must not compare numbers at all (the comparison sentence is built in code from the
+unrounded facts and put in front of its summary), and an answer that fails twice is replaced by the deterministic
+template. In the third live run the first attempt was rejected and the second was accepted. Lesson: valid and grounded
+is not the same as correct; let the model phrase and let code compute. Since 11.11.2026 the SHAP base value is called
+"Startwert des Modells (SHAP-Basiswert)" instead of an average; that wording is covered by tests with a fake client
+and has not been run against the live LLM again.
 
 ### Monitoring: drift check and coverage
 
@@ -292,8 +356,11 @@ Ollama runs on the host. `OLLAMA_BASE_URL` (in `.env`) is where the API finds it
 API uses the template report. `make publish-model` copies a NEWER locally registered model into the server; a new
 version also needs `make calibrate`, or the API refuses it.
 
-**Status:** the compose file passes `docker compose config` and CI builds both images; the seed path (empty
-registry -> seed -> the production loader) and the Host-header behaviour are tested without Docker.
+**Status:** the stack was started on the author's machine on 09.11.2026 (fresh volume: MLflow healthy -> seed
+registered version 1 -> API healthy -> dashboard; the German report came from Ollama on the host). CI builds both
+images and validates the compose file; the seed path (empty registry -> seed -> the production loader) and the
+Host-header behaviour are also tested without Docker. The read-only file mounts of the dashboard were changed on
+11.11.2026 (three validation files instead of `./data`) and have not been started since: check pending (17.11.2026).
 
 ### Retraining and the model card
 
@@ -305,6 +372,26 @@ The tuned challenger is **not** clearly better than the registered recipe (cost 
 includes 0), so the champion stays ([ADR 0007](docs/adr/0007-champion-challenger-promotion.md)). A promoted
 version needs a new calibrator (`make calibrate`); the API refuses a version the calibration summary does not name.
 Intended use, data, metrics and limits of the deployed model: [docs/model_card.md](docs/model_card.md).
+
+## Final test evaluation
+
+**Final test evaluation pending — scheduled after course review (17.11.2026).** The test splits (SCANIA and C-MAPSS)
+are evaluated exactly once, with frozen models, a frozen calibrator and a frozen threshold; the plan and the six
+decisions fixed in advance are in [docs/test_evaluation_plan.md](docs/test_evaluation_plan.md). Order on the test day:
+
+```bash
+uv run python -m failsense.freeze --replace   # 1. re-freeze on the final commit (training data only), commit the manifest
+make freeze-verify                             # 2. hashes, config, library versions, clean git tree
+make rehearse                                  # 3. REHEARSAL on the VALIDATION split: no lock, no test file opened
+uv run python scripts/evaluate_test_once.py --approved-single-run   # 4. the single run (only with approval)
+```
+
+`make rehearse` runs the same code path on the validation split and must reproduce the known validation numbers of
+the frozen Q1 model (5,046 trucks, 136 positives, PR-AUC 0.0653, 3,013 alerts, cost 27,565 at the frozen threshold);
+it writes its result to the log and to the system temp folder, never into the repository. Before the lock is created
+the single run loads and checks every frozen model, so a broken file cannot use up the run. Between the freeze and
+the single run nothing may be written into the repository (`git status` must be empty; no `make drift-check`, no
+`make figures`).
 
 ## Future work
 

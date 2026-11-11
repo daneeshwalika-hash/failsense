@@ -1,8 +1,9 @@
 # Model Card: FailSense Q1 (`failsense-q1`, alias `candidate`, version 1)
 
 Format after Mitchell et al., "Model Cards for Model Reporting" (2019). Numbers come from the files named
-in brackets; nothing here is a target that was set afterwards. Status 09.11.2026. The **test split has not
-been used**.
+in brackets; nothing here is a target that was set afterwards. Numbers of 09.11.2026, text revised 11.11.2026.
+The **test split has not been used**; the final test evaluation is pending (scheduled after course review,
+17.11.2026).
 
 ## 1. Model details
 
@@ -71,8 +72,11 @@ random ranking (Q4); a neural network, LightGBM and random forest are not better
 * No people are scored (vehicles only). A false alarm costs a workshop visit; a miss can cost a breakdown.
 * **Automation bias:** a risk of a few percent can raise an alert (threshold 3.5 %); planners must not read
   an alert as "this truck will fail". The dashboard states the threshold and the cost logic.
-* The German LLM report phrases the model's factors; it is validated against them and falls back to a
-  template, but its text quality with a real LLM has not been judged yet.
+* The German LLM report phrases the model's factors. The first real answer of the local LLM (09.11.2026) passed
+  the schema, factor and language checks and still contained invented numbers (a wrong difference, log-odds
+  written as percent). Since then every percentage must be a given fact, comparisons are written by code, and a
+  text that fails the checks twice is replaced by a deterministic template. A report must still be read as a
+  phrasing of the model's output, not as a diagnosis.
 
 ## 7. Caveats and recommendations
 
@@ -82,7 +86,8 @@ random ranking (Q4); a neural network, LightGBM and random forest are not better
   labels exist in production, so a loss of accuracy is invisible. Evidently was considered and rejected (ADR 0006).
 * **Other limits of the same project:** the classes 0-4 model (Q2) does **not** resolve the urgency (88 % of
   healthy trucks and all failures are put into class 4); the anomaly detectors (Q4) are close to a random
-  ranking; the German report has not been produced by a real LLM yet.
+  ranking; the German report was produced by a real local LLM only three times (09.11.2026), so its text quality
+  is checked by rules, not by a user study.
 * **Before relying on the numbers:** evaluate once on the test split, estimate real workshop costs with the
   service department (the matrix is the challenge's, not this fleet's), and re-check calibration on recent
   labelled data.
