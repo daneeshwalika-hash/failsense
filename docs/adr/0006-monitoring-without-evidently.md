@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (reversible: Evidently stays an option)
 - **Date:** 2026-11-09
-- **Deciders:** Claude Code under the autonomous working mode of 09.11; Daneesh to confirm
+- **Deciders:** Claude Code under the autonomous working mode of 09.11; Accepted — Daneesh Walika, 2026-11-11
 
 ## Context
 

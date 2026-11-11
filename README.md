@@ -1,6 +1,7 @@
 # FailSense
 
 [![CI](https://github.com/daneeshwalika-hash/failsense/actions/workflows/ci.yml/badge.svg)](https://github.com/daneeshwalika-hash/failsense/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 End-to-end predictive maintenance system on real truck fleet data: predicts component failures, estimates remaining useful life (RUL), detects anomalies and explains its predictions.
 
@@ -397,6 +398,11 @@ it writes its result to the log and to the system temp folder, never into the re
 the single run loads and checks every frozen model, so a broken file cannot use up the run. Between the freeze and
 the single run nothing may be written into the repository (`git status` must be empty; no `make drift-check`, no
 `make figures`).
+
+## License
+
+The code of this repository is released under the [MIT License](LICENSE), Copyright (c) 2026 Daneesh Walika.
+The datasets are not part of the repository and keep their own terms (section "Data").
 
 ## Future work
 

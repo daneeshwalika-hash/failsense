@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (decided before the Q4 run)
 - **Date:** 2026-11-09
-- **Deciders:** Claude Code under the autonomous working mode of 09.11 (rule only; no scope change)
+- **Deciders:** Claude Code under the autonomous working mode of 09.11 (rule only; no scope change); Accepted — Daneesh Walika, 2026-11-11
 
 ## Context
 
