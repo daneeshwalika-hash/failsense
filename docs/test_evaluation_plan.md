@@ -1,8 +1,9 @@
 # Plan: one frozen evaluation on the test splits (Q1, Q2, RUL)
 
 **Status (09.11.2026, evening): the evaluation script is written and tested on fixtures; the freeze of 09.11 is
-superseded; nothing has been run on test and no test file was parsed.** The test run needs Daneesh's separate
-approval.
+superseded; nothing has been evaluated on test.** No model, threshold, calibrator or feature choice uses the test
+split, and the test labels have never been loaded for an analysis. What *has* read the test files (format conversion
+and schema checks only) is listed in section 1a. The test run needs Daneesh's separate approval.
 
 ## 0. Order of events (decided 09.11)
 
@@ -26,6 +27,26 @@ The test data are used **once**. Everything that could change a number is decide
 the evaluation script reads **only saved artifacts** (no training, no fitting, no threshold search, no
 calibration), refuses to run if any artifact differs from its recorded hash, and refuses a second run. The
 result is reported whatever it is; nothing is tuned afterwards.
+
+## 1a. What has read the test files so far (and what has not)
+
+"Used once" is about results: nothing has ever been fitted, tuned, chosen or scored with test data. It does not mean
+that no program has opened the files. The complete list:
+
+| Reader | What it reads | Why | Uses the content for a model? |
+|---|---|---|---|
+| `make parquet` (`failsense.data.convert`) | all nine SCANIA CSV files, including `test_labels.csv` | format conversion CSV -> Parquet; the Parquet copy of the test labels is never read back (the evaluation reads the raw CSV) | no |
+| `make validate` (`failsense.data.schema`) | test readouts and specifications (Parquet) | data contract (columns, dtypes, ranges) and "no truck in two splits" | no |
+| EDA notebook `notebooks/01_eda_scania.ipynb` | test readouts and specifications, **not** the labels | truck IDs for the split overlap, number and share of the specification categories | no (see below) |
+| `make freeze` / `make freeze-verify` (`failsense.freeze`) | the five test files as bytes | SHA-256 only, nothing is parsed | no |
+| the single run (`failsense.evaluate_test`) | the five test files | the evaluation of this plan | this is the one use |
+
+`make parquet`, `make validate` and the EDA notebook read test files only for format conversion and schema checks; no
+model, threshold, calibrator or feature choice uses them. The one thing the EDA noticed there, that validation and
+test contain specification categories that do not occur in training, is handled by
+`OneHotEncoder(handle_unknown="ignore")`, a robustness setting the validation split alone already requires. The
+C-MAPSS test files (`test_FD001.txt`, `RUL_FD001.txt`) have not been read by anything but the hashing. The rehearsal
+(`make rehearse`) reads the validation split and opens no test file.
 
 ## 2. What is frozen
 
@@ -79,9 +100,12 @@ result is reported whatever it is; nothing is tuned afterwards.
   with a paired bootstrap of the difference to Ridge (RUL compared with a baseline). 100 engines: the interval is
   wide and is reported.
 * Writes `reports/test_evaluation_final.json`, one MLflow run tagged `stage = test, single run`, and the sections
-  for `docs/results.md`. **No other test access exists in the repository** (a test asserts that only `freeze` (hashing) and
-  `evaluate_test` touch the config's test paths; another asserts that the SCANIA test files are read as RAW csv,
-  never from the Parquet copies).
+  for `docs/results.md`. **No training, tuning, calibration or analysis code can reach the test split.** Two guards in
+  `tests/test_evaluate_test.py` enforce it: a static one (the only modules with a test path or a loop over all splits are
+  the four of section 1a: `freeze`, `evaluate_test`, `data/convert`, `data/schema`) and a dynamic one (a spy on
+  `pd.read_csv`, `pd.read_parquet` and `open` runs the training entry points on fixtures and fails if a file named
+  `test_*` or `RUL_FD*` is opened; a further test proves that this guard does fail on a fake reader). Another test
+  asserts that the SCANIA test files are read as RAW csv, never from the Parquet copies.
 * Script tests (22, mini fixtures only, never the real test files; the metrics are checked by hand): refuses without the flag, with a dirty tree, with a
   changed hash, with an existing lock; the lock is created before the first read; the metrics match hand-computed
   values on a tiny example.

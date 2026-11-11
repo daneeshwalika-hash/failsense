@@ -31,7 +31,10 @@ been used**.
   rows, 2.8 % positive (Kharazian et al., *Scientific Data* 12, 493, 2025; DOI 10.5878/jvb5-d390).
 * **Evaluation:** the official validation split, one row per truck (its last readout): 5,046 trucks, **136
   positives (2.70 %)**. Used for the threshold and for the numbers below, never for fitting.
-* **Test split:** untouched; to be used once at the very end.
+* **Test split:** not used for any model, threshold, calibrator or feature choice; to be evaluated once at the
+  very end. (`make parquet`, `make validate` and the EDA notebook read test files only for format conversion and
+  schema checks; the test labels have never been loaded for an analysis. Details: `docs/test_evaluation_plan.md`,
+  section 1a.)
 * The data are real fleet data with anonymised variables; no personal data.
 
 ## 4. Performance (official validation, 5,046 trucks, 136 positives)

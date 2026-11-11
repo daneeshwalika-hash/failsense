@@ -3,7 +3,10 @@
 All numbers below come from files in `reports/` or from the MLflow runs (experiments `failsense-q1-binary`,
 `failsense-rul`, `failsense-q2-classes`, `failsense-anomaly`, `failsense-unsupervised`,
 `failsense-retrain`); the source is named next to each table. Design, decisions and the history of every
-choice are in [problem_framing.md](problem_framing.md). **The test split has not been used.**
+choice are in [problem_framing.md](problem_framing.md). **The test split has not been used**: no model, threshold,
+calibrator or feature choice uses it. ("Untouched" below always means this. `make parquet`, `make validate` and the
+EDA notebook read test files only for format conversion and schema checks, see
+[test_evaluation_plan.md](test_evaluation_plan.md), section 1a.)
 
 ## 1. Summary
 

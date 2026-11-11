@@ -220,16 +220,184 @@ def test_the_cli_refuses_without_the_flag_with_exit_code_2(monkeypatch: pytest.M
     assert info.value.code == 2
 
 
-def test_no_other_module_reads_the_test_split() -> None:
-    """Only freeze (hashes) and evaluate_test (the single run) touch the config's test paths."""
-    allowed = {"freeze.py", "evaluate_test.py"}
-    pattern = re.compile(r"""\["test"\]|table_path\([^)]*["']test["']""")
-    offenders = [
+# --- who may read the test split -----------------------------------------------------------
+# Every module that can reach a test-split file, and why. Nothing else may.
+DECLARED_TEST_SPLIT_READERS = {
+    "freeze.py": "hashes the five test files (bytes only, nothing is parsed)",
+    "evaluate_test.py": "the single run (and its rehearsal, which reads validation instead)",
+    "data/convert.py": "make parquet: format conversion CSV -> Parquet of all nine SCANIA files",
+    "data/schema.py": "make validate: data contract and split overlap (readouts, specifications)",
+}
+# a literal test path, or a loop over a SPLITS tuple (which contains "test")
+TEST_PATH_PATTERN = re.compile(
+    r"""\["test"\]|table_path\([^)]*["']test["']|read_scania\([^)]*["']test["']|\bSPLITS\b"""
+)
+
+
+def test_only_the_declared_modules_can_reach_the_test_split() -> None:
+    """Static guard: literal test paths and loops over ``SPLITS`` exist only where declared.
+
+    ``convert`` and ``schema`` are on the list on purpose: they read test files for format
+    conversion and schema checks. No training, tuning, calibration or analysis module is.
+    """
+    found = {
         p.relative_to(SRC).as_posix()
         for p in SRC.rglob("*.py")
-        if p.name not in allowed and pattern.search(p.read_text(encoding="utf-8"))
-    ]
-    assert offenders == []
+        if TEST_PATH_PATTERN.search(p.read_text(encoding="utf-8"))
+    }
+    assert found == set(DECLARED_TEST_SPLIT_READERS)
+
+
+def test_the_static_guard_sees_a_loop_over_the_splits() -> None:
+    """The old pattern looked only for ``["test"]`` and was blind to ``scania[split]``."""
+    assert TEST_PATH_PATTERN.search("for split in SPLITS:\n    files = scania[split]")
+    assert TEST_PATH_PATTERN.search('read_table(table_path(config, "test", "readouts"))')
+    assert TEST_PATH_PATTERN.search('scania = config["datasets"]["scania"]["test"]')
+    assert not TEST_PATH_PATTERN.search('read_table(table_path(config, "train", "readouts"))')
+
+
+def assert_no_test_split_read(spy: Any) -> None:
+    """The dynamic guard: fails and names the files if a test-split file was opened."""
+    reads = spy.test_split_reads()
+    assert reads == [], f"test-split file(s) were read: {sorted({Path(p).name for p in reads})}"
+
+
+@pytest.fixture
+def training_config(
+    make_mini_scania, make_mini_cmapss, tmp_path: Path  # type: ignore[no-untyped-def]
+) -> dict[str, Any]:  # fmt: skip
+    """Mini SCANIA + C-MAPSS with all three splits on disk, validation labels included.
+
+    The fixture folder DOES contain ``test_*.parquet`` files, so a loader that walks over all
+    splits would be caught; the C-MAPSS test and RUL paths do not exist.
+    """
+    config = make_mini_scania()
+    cmapss = make_mini_cmapss()
+    config["datasets"]["cmapss"] = cmapss["datasets"]["cmapss"]
+    config["rul"] = {
+        **cmapss["rul"], "rolling_windows": [3, 5], "ridge_alpha": 1.0,
+        "lightgbm": {"n_estimators": 10, "num_leaves": 4, "min_child_samples": 5},
+    }  # fmt: skip
+    processed = Path(config["datasets"]["scania"]["processed_dir"])
+    ids = sorted(pd.read_parquet(processed / "validation_specifications.parquet")["vehicle_id"])
+    labels = tmp_path / "validation_labels.csv"
+    pd.DataFrame({"vehicle_id": ids, "class_label": [0, 0, 2, 4]}).to_csv(labels, index=False)
+    config["datasets"]["scania"]["validation"]["labels"] = str(labels)
+    return config
+
+
+def _train(config: dict[str, Any], tmp_path: Path) -> None:
+    from failsense.models.train import run
+
+    run(config, track=False)  # make train
+
+
+def _tuning_and_calibration_data(config: dict[str, Any], tmp_path: Path) -> None:
+    """Every data read of make tune / evaluate / calibrate / retrain / matched-check."""
+    from failsense.models.tuning_data import build_tuning_data
+    from failsense.models.validation_data import build_validation_frame
+
+    build_tuning_data(config)  # training rows, folds, both validation-like evaluation sets
+    build_validation_frame(config)  # the official validation (calibration, threshold)
+
+
+def _q2_data(config: dict[str, Any], tmp_path: Path) -> None:
+    """Every data read of make q2 / anomaly / explain."""
+    from failsense.models.q2_classes import load_training_frame_with_classes
+    from failsense.models.validation_data import build_validation_frame
+
+    load_training_frame_with_classes(config, 5)
+    build_validation_frame(config)
+
+
+def _rul(config: dict[str, Any], tmp_path: Path) -> None:
+    from failsense.rul import baseline, timeseries
+
+    baseline.run(config, track=False)  # make rul-baseline
+    timeseries.run(config, track=False)  # make rul-timeseries
+
+
+def _rul_freeze(config: dict[str, Any], tmp_path: Path) -> None:
+    freeze.freeze_rul(config, tmp_path / "frozen_rul")  # the RUL training of make freeze
+
+
+@pytest.mark.leakage
+@pytest.mark.parametrize(
+    "entry_point",
+    [_train, _tuning_and_calibration_data, _q2_data, _rul, _rul_freeze],
+    ids=lambda f: f.__name__.strip("_"),
+)
+def test_training_entry_points_never_open_a_test_split_file(
+    entry_point: Callable[..., None], training_config: dict[str, Any], read_spy: Any,
+    tmp_path: Path,
+) -> None:  # fmt: skip
+    """Train, calibrate, Q2 and RUL on fixtures: no opened file is named ``test_*`` / ``RUL_FD*``.
+
+    ``train`` and the RUL scripts run completely. For ``calibrate`` and ``q2`` the functions
+    through which they read ALL their data are run (their full ``run()`` needs a registry model).
+    """
+    read_spy.paths.clear()
+    entry_point(training_config, tmp_path)
+    assert any(Path(p).name.startswith("train_") for p in read_spy.paths)  # the spy was active
+    assert_no_test_split_read(read_spy)
+
+
+@pytest.mark.leakage
+def test_the_guard_fails_on_a_fake_reader_of_the_test_split(
+    training_config: dict[str, Any], read_spy: Any, tmp_path: Path
+) -> None:
+    """Proof that the guard above can fail: three careless 'training' loaders are caught."""
+    processed = Path(training_config["datasets"]["scania"]["processed_dir"])
+
+    def loop_over_all_splits() -> None:  # the mistake a regular expression cannot see
+        for split in ("train", "validation", "test"):
+            pd.read_parquet(processed / f"{split}_specifications.parquet")
+
+    def read_a_csv_copy() -> None:
+        copy = tmp_path / "test_labels.csv"
+        copy.write_text("vehicle_id,class_label\n200,0\n")
+        pd.read_csv(copy)
+
+    def open_the_rul_file() -> None:
+        rul = tmp_path / "RUL_FD001.txt"
+        rul.write_text("112 \n")
+        with rul.open() as handle:
+            handle.read()
+
+    for fake_reader, name in (
+        (loop_over_all_splits, "test_specifications.parquet"),
+        (read_a_csv_copy, "test_labels.csv"),
+        (open_the_rul_file, "RUL_FD001.txt"),
+    ):
+        read_spy.paths.clear()
+        fake_reader()
+        with pytest.raises(AssertionError, match=re.escape(name)):
+            assert_no_test_split_read(read_spy)
+
+
+@pytest.mark.leakage
+def test_the_declared_readers_convert_and_validate_are_caught_by_the_same_guard(
+    training_config: dict[str, Any], read_spy: Any
+) -> None:
+    """``make validate`` does read test files (schema check): that is why it is declared."""
+    from failsense.data.schema import validate_scania
+
+    read_spy.paths.clear()
+    validate_scania(training_config, root=None)
+    caught = {Path(p).name for p in read_spy.test_split_reads()}
+    assert caught == {"test_operational_readouts.parquet", "test_specifications.parquet"}
+
+
+def test_the_spy_judges_a_file_by_its_name_not_by_its_folder() -> None:
+    from conftest import is_test_split_file
+
+    assert is_test_split_file("/data/raw/scania/test_labels.csv")
+    assert is_test_split_file("data/processed/scania/test_operational_readouts.parquet")
+    assert is_test_split_file("/data/raw/cmapss/test_FD001.txt")
+    assert is_test_split_file("/data/raw/cmapss/RUL_FD001.txt")
+    assert not is_test_split_file("/tmp/pytest/test_run_0/train_operational_readouts.parquet")
+    assert not is_test_split_file("/tmp/pytest/test_run_0/validation_labels.csv")
+    assert not is_test_split_file("tests/test_evaluate_test.py")  # code, not data
 
 
 # --- a full run on fixtures --------------------------------------------------------------

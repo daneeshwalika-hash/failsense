@@ -61,7 +61,8 @@ The sections below are the short version.
 
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
 5-fold cross validation, folds grouped by truck, 5 random cut-offs per truck, PR-AUC
-(average precision). The test split has not been used.
+(average precision). The test split has not been used for any model, threshold, calibrator or feature choice
+(what exactly has read the test files: [Data](#data)).
 
 ![Q1 PR-AUC of the models](reports/figures/results_q1_model_comparison.png)
 ![Q1 total cost on the official validation](reports/figures/results_q1_cost.png)
@@ -316,6 +317,12 @@ Intended use, data, metrics and limits of the deployed model: [docs/model_card.m
 | Turbofan Engine Degradation Simulation (C-MAPSS, FD001) | Remaining useful life (RUL) | NASA Prognostics Data Repository, [PCoE data set page](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) (also [data.nasa.gov](https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data)) | **No licence stated** on the NASA pages (the catalog entry says "License not specified"); users are asked to acknowledge the repository and the data donators, and use the data at their own risk. Simulated data, not real engines |
 
 Raw data is never committed; `scripts/download_data.sh` prepares it in `data/raw/`.
+
+**What "test split untouched" means here.** `make parquet`, `make validate` and the EDA notebook read test files
+only for format conversion and schema checks; no model, threshold, calibrator or feature choice uses them, and the
+test labels have never been loaded for an analysis. The single evaluation on test is frozen and locked
+([docs/test_evaluation_plan.md](docs/test_evaluation_plan.md), section 1a lists every reader); tests fail if a
+training entry point opens a file named `test_*` or `RUL_FD*`.
 
 **SCANIA Component X (~1.5 GB) needs one manual download:**
 open the [SND catalogue page](https://researchdata.se/en/catalogue/dataset/2024-34),

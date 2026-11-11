@@ -1226,7 +1226,9 @@ calibration (Brier 0.026 on the validation, §6 calibration).
   CV number is reported for continuity. **The official validation split (06.11) is the real
   check.**
 - Threshold choice and calibration: on the validation set.
-- **The test set is used exactly once**, for the final reported result.
+- **The test set is used exactly once**, for the final reported result. "Untouched" in this document means: no
+  model, threshold, calibrator or feature choice uses it. `make parquet`, `make validate` and the EDA notebook read
+  test files only for format conversion and schema checks (`docs/test_evaluation_plan.md`, section 1a).
 - All models use the same folds and the same metrics; every run is logged in MLflow
   (local SQLite tracking, `configs/config.yaml` → `mlflow`; UI with `scripts/mlflow_ui.sh`).
   Per run: parameters, per-fold scores, mean and standard deviation, and the **train/validation
