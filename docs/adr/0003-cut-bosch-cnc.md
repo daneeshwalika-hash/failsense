@@ -51,3 +51,8 @@ SCANIA Component X.
    IsolationForest / LOF as for SCANIA; a pandera data contract and small fixtures for tests.
 5. Metric: PR-AUC of the anomaly score for the bad class and recall in the top-k, compared with a
    random ranking (same as Q4 on SCANIA).
+
+> **Note (2026-11-11), schedule change.** This ADR names 15.11.2026 as the deadline. By Daneesh's decision of
+> 10.11.2026 the repository is still published on 15.11.2026, but without a test result: the single test
+> evaluation moved to Tue 17.11.2026, after the course review of 16.11 (presentation: 20.11.2026). See
+> `docs/test_evaluation_plan.md`, section 0. The text of this ADR is unchanged.

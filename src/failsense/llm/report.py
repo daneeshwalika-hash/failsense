@@ -19,6 +19,12 @@ machine (no patient/fleet data leaves the premises), and ``/api/chat`` with a JS
 Honesty: the SCANIA variables are anonymised, so an explanation can only say that a factor raises or
 lowers the *model's* risk; it must not claim a cause. The prompt (``prompts/``) forbids it and the
 fallback text says it.
+
+The start value: ``baseline_risk`` is the SHAP base value turned into a calibrated risk, the point
+from which the factors raise or lower the risk ("Startwert des Modells (SHAP-Basiswert)"). It is
+**not** the average risk of the fleet: the base value is the mean of the model's log-odds on the
+training rows, and the probability at a mean log-odds is not the mean probability (about 2.1 %
+against a mean predicted risk of 4.3 % on the validation trucks). No text may call it an average.
 """
 
 from __future__ import annotations
@@ -43,6 +49,11 @@ OLLAMA_URL_ENV = "OLLAMA_BASE_URL"
 LEGACY_OLLAMA_URL_ENV = "FAILSENSE_OLLAMA_URL"  # accepted for older setups
 RiskLevel = Literal["niedrig", "erhöht", "hoch"]
 HIGH_RISK_FACTOR = 2.0  # risk >= 2 x threshold -> "hoch"
+# How the SHAP base value is named in every German text (never "Durchschnitt").
+START_VALUE_NAME = "Startwert des Modells (SHAP-Basiswert)"
+START_VALUE_DATIVE = "dem Startwert des Modells"
+START_VALUE_GENITIVE = "des Startwerts des Modells"
+START_VALUE_NOTE = "SHAP-Basiswert"
 MAX_VALUE_LENGTH = 32
 _SAFE_TEXT = re.compile(r"^[A-Za-z0-9_.\-]+$")
 
@@ -96,7 +107,7 @@ class ReportInput:
     risk: float
     alert: bool
     threshold: float
-    baseline_risk: float
+    baseline_risk: float  # the model's start value (SHAP base value), NOT the fleet average
     factors: Sequence[ReportFactor]
 
 
@@ -167,7 +178,8 @@ def build_user_message(data: ReportInput, level: RiskLevel) -> str:
     lines = [
         f"Risiko (kalibrierte Wahrscheinlichkeit einer Reparatur innerhalb von 48 Zeitschritten): "
         f"{data.risk:.1%}",
-        f"Durchschnittliches Risiko aller Fahrzeuge: {data.baseline_risk:.1%}",
+        f"{START_VALUE_NAME}, von dem aus die Faktoren das Risiko erhöhen oder senken: "
+        f"{data.baseline_risk:.1%}",
         f"Alarmschwelle (kostenbasiert): {data.threshold:.1%}",
         f"Alarm: {'ja' if data.alert else 'nein'}",
         f"risk_level (vorgegeben): {level}",
@@ -204,45 +216,66 @@ PERCENT_TOLERANCE = 0.06  # the facts are given with one decimal; allow its roun
 
 
 def comparison_sentence(data: ReportInput) -> str:
-    """The risk / threshold / average comparison, built in code (differences in percentage points).
+    """The risk / threshold / start-value comparison, built in code (percentage points).
 
     The LLM must not compare numbers: a real answer said "2.1 % über dem Durchschnitt" for a risk
-    of 4.4 % against an average of 2.1 % (the difference is 2.3 points). Every difference in the
-    report is written here, from the unrounded facts, and put in front of the LLM's summary.
+    of 4.4 % against a start value of 2.1 % (the difference is 2.3 points, and the start value is
+    not an average). Every difference in the report is written here, from the unrounded facts, and
+    put in front of the LLM's summary. The second comparison is phrased against the model's start
+    value (SHAP base value) and never against "the average of all vehicles".
     """
-    risk, threshold, average = 100 * data.risk, 100 * data.threshold, 100 * data.baseline_risk
+    risk, threshold, start = 100 * data.risk, 100 * data.threshold, 100 * data.baseline_risk
 
-    def versus(value: float, reference: float, name: str, shown: float) -> str:
+    def versus(value: float, reference: float, dative: str, genitive: str, note: str = "") -> str:
+        shown = f"({note}, {reference:.1f} %)" if note else f"({reference:.1f} %)"
         gap = round(abs(value - reference), 1)
         if gap == 0:
-            return f"auf der Höhe {name} ({shown:.1f} %)"
+            return f"auf der Höhe {genitive} {shown}"
         side = "über" if value > reference else "unter"
-        return f"{gap:.1f} Prozentpunkte {side} {name} ({shown:.1f} %)"
+        return f"{gap:.1f} Prozentpunkte {side} {dative} {shown}"
 
     return (
         f"Das berechnete Risiko von {risk:.1f} % liegt "
-        f"{versus(risk, threshold, 'der Alarmschwelle', threshold)} und "
-        f"{versus(risk, average, 'dem Durchschnitt aller Fahrzeuge', average)}."
+        f"{versus(risk, threshold, 'der Alarmschwelle', 'der Alarmschwelle')} und "
+        f"{versus(risk, start, START_VALUE_DATIVE, START_VALUE_GENITIVE, START_VALUE_NOTE)}."
     )
 
 
 _COMPARISON = re.compile(
     r"(über|unter|oberhalb|unterhalb|höher|niedriger|größer|kleiner|mehr|weniger)[^.;]{0,50}?"
-    r"(schwelle|durchschnitt|mittel)"
-    r"|(schwelle|durchschnitt|mittel)[^.;]{0,50}?"
+    r"(schwelle|durchschnitt|mittel|startwert|basiswert)"
+    r"|(schwelle|durchschnitt|mittel|startwert|basiswert)[^.;]{0,50}?"
     r"(über|unter|oberhalb|unterhalb|höher|niedriger|größer|kleiner)"
     r"|prozentpunkt",
+    re.IGNORECASE,
+)
+# No fact given to the LLM is an average, so a text that presents a risk or a percentage as one
+# has invented it (typically by calling the model's start value "Durchschnitt"). A feature
+# description such as "durchschnittliche Klasse des Histogramms" is not meant and not matched.
+_PERCENT_VALUE = r"\d+(?:[.,]\d+)?\s*(?:%|prozent)"
+_AVERAGE = re.compile(
+    r"durchschnitts?risik\w*"
+    r"|durchschnittlich\w*\s+(?:\w+\s+)?risik\w*"
+    r"|(?:durchschnitt|mittelwert|mittel)\w*\s+(?:aller|der|des)\s+(?:fahrzeug|flotte|risik)\w*"
+    r"|flottendurchschnitt\w*"
+    rf"|(?:durchschnitt\w*|mittelwert\w*|im mittel)\b[^;]{{0,30}}?{_PERCENT_VALUE}"
+    rf"|{_PERCENT_VALUE}[^;.]{{0,20}}?(?:durchschnitt|mittelwert)",
     re.IGNORECASE,
 )
 
 
 def comparison_phrases(text: str) -> list[str]:
-    """Comparisons with the threshold or the average in LLM text (the system writes those)."""
+    """Comparisons with the threshold or the start value in LLM text (the system writes those)."""
     return [m.group(0) for m in _COMPARISON.finditer(text)]
 
 
+def average_phrases(text: str) -> list[str]:
+    """Phrases that present a risk or a percentage as an average (no given fact is one)."""
+    return [m.group(0) for m in _AVERAGE.finditer(text)]
+
+
 def allowed_percentages(data: ReportInput) -> list[float]:
-    """The only percentages a report may quote: risk, average risk and alert threshold."""
+    """The only percentages a report may quote: risk, the model's start value, alert threshold."""
     return [100 * data.risk, 100 * data.baseline_risk, 100 * data.threshold]
 
 
@@ -283,6 +316,12 @@ def validate_report(report: MaintenanceReport, data: ReportInput, level: RiskLev
     invented = ungrounded_percentages(report_texts(report), data)
     if invented:
         problems.append(f"percentage(s) that are not among the given facts: {invented}")
+    averages = average_phrases(report_texts(report))
+    if averages:
+        problems.append(
+            f"the text speaks of an average (no given fact is one; the start value is the SHAP "
+            f"base value, not the fleet average): {averages[:2]}"
+        )
     return problems
 
 

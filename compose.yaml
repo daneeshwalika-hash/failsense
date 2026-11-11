@@ -77,8 +77,25 @@ services:
     environment:
       FAILSENSE_API_URL: http://api:8000
     volumes:
-      # demo trucks: the validation split read from ./data (never the test split); not part of the image
-      - ./data:/app/data:ro
+      # Demo trucks: exactly the three VALIDATION Parquet files the dashboard reads, each read-only.
+      # The data folder as a whole is NOT mounted, so no test file (labels included) is visible in
+      # the container. create_host_path: false = fail instead of creating an empty folder if a file
+      # is missing (run `make parquet` first).
+      - type: bind
+        source: ./data/processed/scania/validation_operational_readouts.parquet
+        target: /app/data/processed/scania/validation_operational_readouts.parquet
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./data/processed/scania/validation_specifications.parquet
+        target: /app/data/processed/scania/validation_specifications.parquet
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./data/processed/scania/validation_labels.parquet
+        target: /app/data/processed/scania/validation_labels.parquet
+        read_only: true
+        bind: { create_host_path: false }
     ports:
       - "127.0.0.1:8501:8501"
     depends_on:

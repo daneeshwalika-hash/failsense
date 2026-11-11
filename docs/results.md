@@ -1,9 +1,16 @@
-# Results — FailSense (status 09.11.2026)
+# Results — FailSense (results of 09.11.2026, text revised 11.11.2026)
+
+> **Test results:** Final test evaluation pending — scheduled after course review (17.11.2026). The single, frozen
+> evaluation on the test splits ([test_evaluation_plan.md](test_evaluation_plan.md)) will be added here as its own
+> section, whatever it shows. Every number below comes from cross validation or from the official validation split.
 
 All numbers below come from files in `reports/` or from the MLflow runs (experiments `failsense-q1-binary`,
 `failsense-rul`, `failsense-q2-classes`, `failsense-anomaly`, `failsense-unsupervised`,
 `failsense-retrain`); the source is named next to each table. Design, decisions and the history of every
-choice are in [problem_framing.md](problem_framing.md). **The test split has not been used.**
+choice are in [problem_framing.md](problem_framing.md). **The test split has not been used**: no model, threshold,
+calibrator or feature choice uses it. ("Untouched" below always means this. `make parquet`, `make validate` and the
+EDA notebook read test files only for format conversion and schema checks, see
+[test_evaluation_plan.md](test_evaluation_plan.md), section 1a.)
 
 ## 1. Summary
 
@@ -15,9 +22,11 @@ choice are in [problem_framing.md](problem_framing.md). **The test split has not
 3. **The model ranks, but its probabilities add no skill over the base rate** (PR-AUC 0.065, ROC-AUC 0.70,
    Brier 0.026 = base rate); the honest benchmark is "alert everybody", because a miss costs 200–500 and
    a false alarm 7.
-4. **Caveat (mapping a):** the saving assumes an alert on a failing truck costs 0. If an alert is read as
-   "predicted class 1" (mapping b), the model saves only **148** vs. never alerting. The positive result
-   depends on mapping (a).
+4. **Caveat (mapping a):** the Q1 saving assumes that an alert on a failing truck costs nothing. If an alert is
+   read as "predicted class 1" (mapping b), the model saves only **148** vs. never alerting. The positive result
+   depends on mapping (a), and so does the baseline: "alert every truck" for 34,370 does not exist in the official
+   cost matrix. **Under the official 5 x 5 matrix, where every alert must name a class, the comparable result is
+   Q2 (section 11): 43,871 for the model against 49,566 for the best constant predictor ("always class 4").**
 5. The test split is untouched and is used once, at the very end. Deployed: sigmoid calibrator fitted
    without validation labels + threshold 0.0353 learned on the whole validation (the cost to quote is the
    cross-fitted 28,220, not the in-sample 27,565).
@@ -29,17 +38,18 @@ Source: `reports/calibration_q1_summary.json` (`deployment_choice`, `primary_bas
 not resolved (section 11). Q4: anomaly detectors on healthy trucks are close to a random ranking; as an extra
 feature +0.0068 PR-AUC with an interval that includes 0 (section 12). Q3 RUL: Ridge 21.6 -> LightGBM with rolling
 features 18.1 RMSE (section 8). The MLP does not beat logistic regression or XGBoost (section 3). Serving: API,
-dashboard, prediction log, drift check (misses a x3 counter shift), docker compose (not started here), coverage
+dashboard, prediction log, drift check (misses a x3 counter shift), docker compose (started on 09.11), coverage
 83 % (section 13). Retraining: the tuned challenger is not clearly better than the champion (section 14).
 
 ## 2. Evaluation protocol
 
-**Random-row cross validation was too optimistic.** The first protocol (5-fold CV, folds grouped by truck,
-random cut-offs) gave PR-AUC 0.13 for XGBoost, but its cut-offs lie far earlier in a truck's history than
+**Cross validation on random cut-offs (folds grouped by truck) was too optimistic; the gap was a distribution
+mismatch, not leakage.** No truck was ever on both sides of a fold. The first protocol (5-fold CV, folds grouped by
+truck, random cut-offs) gave PR-AUC 0.13 for XGBoost, but its cut-offs lie far earlier in a truck's history than
 the official validation's last readouts (median `time_step` 83 vs. 169, KS 0.425). On an evaluation set
 that imitates the validation, the same models score 1.4–2.5 × lower:
 
-| Model | Old CV (random rows) | Calibrated validation-like set | Literal set | Factor |
+| Model | Old CV (random cut-offs) | Calibrated validation-like set | Literal set | Factor |
 |---|---|---|---|---|
 | XGBoost | 0.1335 ± 0.0080 | 0.0530 ± 0.0045 | 0.0901 ± 0.0161 | 2.5 / 1.5 |
 | Logistic regression | 0.1098 ± 0.0055 | 0.0444 ± 0.0031 | 0.0781 ± 0.0076 | 2.5 / 1.4 |
@@ -99,7 +109,9 @@ It is worse than the logistic regression (-0.0107 ± 0.0138, better in 1/5 folds
 0.10) and the engineered features do not help it (-0.0034, 3/5 folds, noise). With ~117,000 tabular rows, 2.8 % positives
 and heavy-tailed counters, boosted trees remain the right tool; the network was not tuned (no search over width, depth
 or penalty). The early-stopping split inside `MLPClassifier` is by row, not by truck (the class cannot take groups); the
-reported PR-AUC comes from the outer grouped CV.
+reported PR-AUC comes from the outer grouped CV. **The MLP early stopping used a random row split:** its inner validation
+part contains other cut-offs of the training trucks, so the stopping signal is too optimistic and training probably
+stops too late; the comparison is therefore not fully fair to the MLP.
 
 Without the specs (−0.0069, 0/5 folds) or without `time_step` (−0.0061, 0/5) XGBoost is worse; engineered
 features help (+0.0101, 4/5).
@@ -283,8 +295,9 @@ The alpha of Ridge and Lasso is a tie.
 
 **Time-series features and LightGBM (09.11, `make rul-timeseries`, `reports/rul_timeseries_fd001.csv`,
 MLflow experiment `failsense-rul`).** Constant columns are removed inside the Pipeline (`VarianceThreshold`,
-fitted per fold; settings 3 and 7 constant sensors in FD001); for the informative sensors the trailing
-rolling mean and std over 5 and 15 cycles are added (60 more columns; windows only look backwards within
+fitted per fold; in FD001 these are `setting_3` and 6 constant sensors (1, 5, 10, 16, 18, 19), 7 constant
+columns); for the 15 informative sensors the trailing
+rolling mean and std over 5 and 15 cycles are added (15 x 2 x 2 = 60 more columns; windows only look backwards within
 one engine, a test pins this). Same 5 folds grouped by engine, RUL cap 125, LightGBM not tuned
 (300 rounds, 15 leaves, `min_child_samples` 50).
 
@@ -339,12 +352,19 @@ file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision
 - **The drift check misses a x3 shift of the counters with 200 rows** (PSI 0.075, KS p 0.012, although the alert
   rate rose from 55 % to 70 %); it flags x10 and above. It watches the output only and sees no input drift
   (section 13, ADR 0006; Evidently was rejected on 09.11).
-- **Open as of 09.11:** the **test split is unused** (one evaluation at the very end, with Daneesh's approval);
-  the German report has never been produced by a real LLM (Ollama is not installed on the development
-  machine); the docker compose stack has never been started (Docker Desktop was not running; CI builds the
-  images); the drift check is output-only and misses small shifts (section 13); MLP, LightGBM and the
-  anomaly feature are untuned or unconfirmed; the cost matrix is the challenge's, not a fleet's.
-  Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
+- **Open as of 11.11:** the **final test evaluation is pending** (scheduled after course review, 17.11.2026: one
+  frozen evaluation, with Daneesh's approval); the drift check is output-only and misses small shifts
+  (section 13); MLP, LightGBM and the anomaly feature are untuned or unconfirmed; the cost matrix is the
+  challenge's, not a fleet's. Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
+- **The German LLM report (done on 09.11, with a lesson).** The docker compose stack was started on a fresh volume
+  and a local LLM (`qwen2.5:7b`, CPU, 69-110 s per report) wrote the report three times. The first answer passed
+  every check of that time (valid JSON, only given factors, German) and still contained invented numbers: a wrong
+  difference ("0.3 % über der Alarmschwelle" for 4.4 % against 3.5 %) and log-odds contributions written as
+  percent. Fixes of the same evening: every percentage in the text must be a given fact, comparisons are written by
+  code from the unrounded facts, and an answer that fails twice is replaced by the deterministic template (in the
+  third live run the first attempt was rejected, the second accepted). The wording of 11.11 ("Startwert des
+  Modells" instead of an average, in `POST /explain` and the report) is tested with a fake client and has not been run against the live
+  LLM again.
 
 ## 10. Unsupervised view of the training trucks (PCA, KMeans; 09.11)
 
@@ -459,8 +479,9 @@ trucks, 136 positives, prevalence 0.027), test split untouched.
   that already moves the alert rate by 15 points: with 200 rows and a model that is fairly insensitive to the
   counter scale, output drift is a weak detector. It does not see input changes that leave the risk alone, and
   a drift of the risk is not a loss of accuracy (there are no production labels).
-* **Test coverage** (`make coverage`, also printed in CI): 986 tests, **83 % line + branch coverage** of
-  `src/failsense`. Lowest: the long-running `run()` entry points of the analysis scripts (class mix, matched
+* **Test coverage** (`make coverage`, also printed in CI): the suite has **1,155 tests** (11.11.2026). The
+  coverage of **83 % (line + branch)** of `src/failsense` was measured on 09.11.2026 with the 986 tests of that
+  day and has not been measured again since. Lowest: the long-running `run()` entry points of the analysis scripts (class mix, matched
   check, explain, calibrate, anomaly: 39-65 %, they are run by hand and their helpers are tested) and
   `dashboard/app.py`, which shows 0 % only because Streamlit's headless `AppTest` executes it outside
   coverage's tracing; it is tested (30 tests of the page).
@@ -484,6 +505,11 @@ registered. This agrees with section 4 (the Optuna search gave +0.0015 PR-AUC, i
 champion saves only 7 % against "never alert" on this holdout (the evaluation rows are mostly class 1, whose miss
 costs 200), against 51 % on the official validation (mostly class 4, miss costs 500): the size of a cost saving
 depends on the class mix as much as on the model.
+
+**The retrain holdout was also used for Optuna:** the evaluation rows of fold 0 were part of the objective of the
+hyperparameter search (mean PR-AUC over all five folds), so the holdout is not independent of the challenger and the
+comparison is biased in its favour. It lost anyway, which makes "keep the champion" the safe reading; a real retrain
+needs a holdout that no search has seen.
 
 A promoted version would also need its own calibrator: `deployment_choice.model_version` records the version the
 calibrator was fitted for and the API refuses any other version until `make calibrate` is run.

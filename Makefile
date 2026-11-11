@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model retrain freeze freeze-verify drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model retrain freeze freeze-verify rehearse drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -72,6 +72,9 @@ freeze:  ## Freeze Q1/Q2/RUL for the single test evaluation (trains on TRAINING 
 
 freeze-verify:  ## Verify the frozen artifacts, source files, config, test-file hashes and git state against the manifest
 	uv run python -m failsense.freeze --verify
+
+rehearse:  ## REHEARSAL of the test evaluation on the VALIDATION split: no lock, no test file, result in the log and in the temp folder
+	uv run python scripts/evaluate_test_once.py --rehearse-on-validation
 
 drift-reference:  ## Risks of the deployed model on the validation last readouts = reference for the drift check
 	uv run python -m failsense.monitoring.drift reference

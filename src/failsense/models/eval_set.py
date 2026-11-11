@@ -92,8 +92,11 @@ EVAL_METHODS = ("calibrated", "literal", "rank")
 MATCH_NOISE = 0.25  # sigma of the log-normal noise on the reach in training rounds
 MIN_TIME_STEP = 70  # "ts70": the official validation q05 is 78
 # Positive rate of the official validation split: 136 of 5,046 trucks are in classes 1-4
-# (EDA, notebook section 14 / docs section 3). A reference for the sanity check only; it is
-# neither computed from validation labels here nor used to build any sample.
+# (EDA, notebook section 14 / docs section 3). ONE aggregate number that is published with the
+# dataset; it is not computed from validation labels here and no per-row label is used. It has
+# two uses: it is the TARGET RATE of the calibrated evaluation set
+# (``build_eval_cutoffs_by_method``, method "calibrated") and the reference of the sanity check
+# (``positive_rate_report``).
 OFFICIAL_VALIDATION_POSITIVES = (136, 5046)
 
 

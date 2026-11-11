@@ -20,8 +20,11 @@ C. **Threshold by total cost.** SCANIA cost matrix, binary reading from ``failse
    class mix of the calibrated evaluation set (training labels only).
 D. One MLflow run, a summary JSON and CSV tables in ``reports/``, figures in ``reports/figures/``.
 
-Validation class counts appear in the report for documentation only; no threshold is derived
-from them.
+Which labels decide what: the THEORETICAL threshold uses the class mix of the evaluation set
+(training labels only), and the validation class counts appear in the report for documentation
+only. The DEPLOYED threshold (``deployment_choice``) is learned on the validation labels: the
+true classes 0-4 give the per-truck costs, and the cost-optimal threshold on the whole validation
+set is stored. That is why the cost to quote is the cross-fitted one.
 """
 
 from __future__ import annotations

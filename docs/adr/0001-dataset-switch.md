@@ -84,3 +84,12 @@ without any ML. This leakage lesson is kept here and in
   Brownfield CNC Milling Machines: A New Benchmark Dataset for Data-Driven
   Machine Monitoring.* Procedia CIRP 107. https://github.com/boschresearch/CNC_Machining (CC BY 4.0)
 - Matzka, S. (2020). AI4I 2020 Predictive Maintenance Dataset. UCI. https://doi.org/10.24432/C5HS5C
+
+> **Note (2026-11-11), schedule change.** This ADR names 15.11.2026 as the deadline. By Daneesh's decision of
+> 10.11.2026 the repository is still published on 15.11.2026, but without a test result: the single test
+> evaluation moved to Tue 17.11.2026, after the course review of 16.11 (presentation: 20.11.2026). See
+> `docs/test_evaluation_plan.md`, section 0. The text of this ADR is unchanged.
+>
+> **Note (2026-11-11), dataset version.** The reference above names Version 2 (DOI 10.5878/jvb5-d390), the DOI the
+> paper cites. The archive that was downloaded is Version 3 (2025-04-09, DOI 10.5878/bnh5-ka77, CC BY 4.0); the
+> catalogue lists the same checksums for the CSV files of both versions. See the README, "Data & Licenses".

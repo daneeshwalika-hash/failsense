@@ -63,3 +63,39 @@ def test_the_image_contains_the_bundled_model_the_seed_needs() -> None:
 def test_the_images_silence_the_missing_git_executable_warning() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "GIT_PYTHON_REFRESH=quiet" in dockerfile
+
+
+def test_the_dashboard_sees_only_the_three_validation_files_read_only() -> None:
+    """The dashboard needs its demo trucks, nothing else: no test file is mounted (review F14)."""
+    from failsense.config import load_config
+
+    volumes = SERVICES["dashboard"]["volumes"]
+    for volume in volumes:
+        assert isinstance(volume, dict) and volume["type"] == "bind"
+        assert volume["read_only"] is True
+        assert volume["bind"]["create_host_path"] is False  # a missing file is an error
+        assert volume["target"] == "/app/" + volume["source"].removeprefix("./")
+        assert "test" not in volume["source"] and "test" not in volume["target"]
+    scania = load_config()["datasets"]["scania"]
+    needed = {
+        f"./{scania['processed_dir']}/{Path(scania['validation'][table]).stem}.parquet"
+        for table in ("readouts", "specifications", "labels")
+    }  # exactly what failsense.dashboard.data reads
+    assert {volume["source"] for volume in volumes} == needed and len(volumes) == 3
+
+
+def test_no_service_mounts_the_data_folder_as_a_whole() -> None:
+    whole = {"./data", "data", "./data/raw", "./data/processed", "./data/processed/scania"}
+    for name, service in SERVICES.items():
+        for volume in service.get("volumes", []):
+            source = volume["source"] if isinstance(volume, dict) else str(volume).split(":")[0]
+            assert source.rstrip("/") not in whole, name
+
+
+def test_the_dockerfile_header_says_what_the_image_really_contains() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "NOT the model" not in dockerfile  # the image does hold the bundled seed model
+    assert "ONE bundled copy of model version 1" in dockerfile
+    assert "--no-default-groups" in dockerfile
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "--no-default-groups" in readme and "--no-dev" not in readme

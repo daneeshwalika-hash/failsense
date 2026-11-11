@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
 # FailSense prediction API image (multi-stage, non-root).
 #
-# The image holds code + config + the calibration summary, NOT the model: the model is read
+# What the image holds: code, config, the two small report files the service reads (calibration
+# summary, registry facts), the German report prompt, and ONE bundled copy of model version 1
+# (models/failsense-q1, 1.2 MB). The bundle exists only to seed an EMPTY MLflow registry
+# (docker compose, `python -m failsense.models.seed_registry`). The served model is always loaded
 # from the MLflow registry at startup (mount mlflow.db and mlartifacts, or point to a tracking
-# server - see the README). Data and secrets never enter the image (.dockerignore).
+# server - see the README), never from the bundle directly. Data and secrets never enter the
+# image (.dockerignore).
 #
 # Build:  docker build -t failsense-api .
 # Run:    docker run --rm -p 8000:8000 -v "$PWD/mlflow.db:/app/mlflow.db" \
@@ -38,8 +42,9 @@ FROM builder AS builder-dashboard
 RUN uv sync --locked --no-default-groups --group dashboard --no-editable
 
 # ---- stage 2a: dashboard image (target: dashboard) -------------------------------------------
-# Only talks to the API over HTTP (FAILSENSE_API_URL) and reads the validation split from a mounted
-# ./data folder for its demo trucks; it never loads the model.
+# Only talks to the API over HTTP (FAILSENSE_API_URL) and reads its demo trucks from the three
+# VALIDATION Parquet files that compose mounts read-only (no test file is mounted); it never loads
+# the model.
 FROM python:3.12-slim AS dashboard
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \

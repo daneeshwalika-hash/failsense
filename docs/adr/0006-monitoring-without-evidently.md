@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (reversible: Evidently stays an option)
 - **Date:** 2026-11-09
-- **Deciders:** Claude Code under the autonomous working mode of 09.11; Daneesh to confirm
+- **Deciders:** Claude Code under the autonomous working mode of 09.11; Accepted — Daneesh Walika, 2026-11-11
 
 ## Context
 
@@ -28,7 +28,9 @@ API's prediction log, read through `GET /predictions/latest`, ignoring rows of o
   reports and HTML dashboards are what Evidently would add.
 - Measured power with 200 rows: a x1 and a x3 scaling of the counters are **not** flagged (PSI 0.03 / 0.07);
   x10 and above are (PSI 0.11-0.15, KS p < 0.004). The model is fairly insensitive to the raw counter scale
-  (`log1p`, many other inputs), so "no alert" does not mean "no change in the fleet".
+  (most of its signal comes from the histogram features, which a scaling of the counters leaves unchanged), so
+  "no alert" does not mean "no change in the fleet". *(Wording corrected on 2026-11-11: this line named `log1p`,
+  but the deployed XGBoost pipeline has no `log1p` step; only the linear models use it.)*
 - To adopt Evidently later: `uv add --group monitoring evidently` (not in `default-groups`), a function that
   renders its `DataDriftPreset` from the same reference CSV and the log rows, and a statement about
   telemetry. Daneesh decides.
