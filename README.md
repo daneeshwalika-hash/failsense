@@ -125,7 +125,7 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 | Dummy (always the prior, = share of positives) | 0.0276 | 0.0276 | 0 |
 | Logistic regression, 106 raw features | 0.1014 ± 0.0047 | 0.1094 | +0.008 |
 | + truck specifications | 0.1013 ± 0.0069 | 0.1147 | +0.013 |
-| + `log1p` on counters and histogram counts (**linear reference**) | 0.1099 ± 0.0055 | 0.1254 | +0.016 |
+| + `log1p` on counters and histogram counts (**linear reference**) | 0.1098 ± 0.0055 | 0.1254 | +0.016 |
 | XGBoost, 300 rounds, untuned (no early stopping) | **0.1335 ± 0.0080** | 0.5147 | +0.381 |
 | XGBoost + engineered features | **0.1435 ± 0.0080** | 0.6124 | +0.469 |
 | MLP (64-32, early stopping, scaled) | 0.0992 ± 0.0101 | 0.7109 | +0.612 |
@@ -135,10 +135,14 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   (random forest, HistGradientBoosting, XGBoost, LightGBM) are clearly better (+0.021 to
   +0.024, better in 5 of 5 folds) and indistinguishable from each other; they are not tuned
   yet, and their large train/validation gap shows it.
-- `log1p` is the only change so far that wins in every fold (+0.0086 ± 0.0053, 5/5 folds).
+- `log1p` is the only change so far that wins in every fold (+0.0086 ± 0.0053, 5/5 folds; the paired gain
+  comes from an earlier run, where the reference scored 0.10988; the table shows the saved report
+  `reports/compare_models_q1.csv`, 0.10985, a difference in the fifth decimal between two runs).
   Engineered features (counter rates, histogram shares), SMOTE, and the specifications gave
   no real gain for the linear model.
-- **The scores above come from a random-row cross validation and are too optimistic.** On a
+- **The scores above come from a cross validation on random cut-offs (folds grouped by truck) and are too
+  optimistic; the gap was a distribution mismatch, not leakage.** The random cut-offs lie much earlier in a
+  truck's history than the last readouts the official validation asks about. On a
   validation-like evaluation set (same `time_step` distribution and positive rate as the
   official validation) XGBoost scores about **0.05–0.09** PR-AUC and the logistic regression
   0.04–0.08, with the same ranking (`docs/problem_framing.md` §6, "Evaluation protocol"). The
@@ -195,11 +199,12 @@ test file is untouched:
 | Model | Validation RMSE | Training RMSE | MAE |
 |---|---|---|---|
 | Dummy (mean) | 41.67 ± 0.00 | 41.67 | 36.97 |
-| Ridge (alpha 100) | 21.64 ± 1.38 | 21.44 | 17.72 |
+| Ridge (alpha 1) | 21.64 ± 1.38 | 21.44 | 17.72 |
 | Lasso (alpha 0.1) | 21.63 ± 1.38 | 21.44 | 17.72 |
 
-A linear model halves the error of the mean predictor. Ridge and Lasso are identical; Lasso
-only switches off the 7 constant columns. Details in the docs; this is simulated data.
+A linear model halves the error of the mean predictor. Ridge and Lasso are identical (the Ridge alphas
+0.1 to 100 tie at 21.64; alpha 1 is the configured value, `rul.ridge_alpha`); Lasso only switches off the
+7 constant columns (`setting_3` and the 6 constant sensors). Details in the docs; this is simulated data.
 
 **Time-series features (09.11):** trailing rolling mean / std over 5 and 15 cycles (past cycles of the same
 engine only) and LightGBM, same folds: Ridge 21.6 → Ridge + rolling 19.6 → LightGBM 18.7 → **LightGBM +

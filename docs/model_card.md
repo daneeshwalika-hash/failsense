@@ -54,6 +54,12 @@ cheapest decision alerts more than half of the fleet. The saving depends on the 
 alert on a failing truck is free); under the stricter reading "alert = predicted class 1" the model saves
 only 148 vs. never alerting. The cost is the cross-fitted one; the in-sample cost (27,565) is optimistic.
 
+**The served risk is about 1.6x too high on the validation:** the mean calibrated risk is 0.04275, the true repair
+rate 0.02695 `[reports/calibration_q1_scores.csv]`. The calibrator was fitted on a validation-like set of training
+trucks whose positives are mostly early warnings (class 1), while the validation positives are mostly close to the
+failure (class 4). The alert decision is not affected (the threshold was learned on the same calibrated values), but
+the number itself is: **use the risk for ranking and for the cost decision, not as an exact probability.**
+
 Other questions on the same data (`docs/results.md`): classes 0-4 (Q2) do not resolve the urgency (88 % of
 healthy trucks and all positives are put into class 4); anomaly detection on healthy trucks is close to a
 random ranking (Q4); a neural network, LightGBM and random forest are not better than this XGBoost recipe.
@@ -91,6 +97,8 @@ random ranking (Q4); a neural network, LightGBM and random forest are not better
 * **Before relying on the numbers:** evaluate once on the test split, estimate real workshop costs with the
   service department (the matrix is the challenge's, not this fleet's), and re-check calibration on recent
   labelled data.
+* **The risk is not an exact probability:** on average about 1.6x too high on the validation (0.04275 vs.
+  0.02695, section 4); the Brier score is no better than the base rate.
 * **Retraining:** `make retrain` compares a challenger with this recipe on a fixed holdout and promotes only
   with 95 % confidence (ADR 0007); a promoted version must be recalibrated (`make calibrate`) before it is
   served.

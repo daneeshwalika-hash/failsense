@@ -22,9 +22,11 @@ EDA notebook read test files only for format conversion and schema checks, see
 3. **The model ranks, but its probabilities add no skill over the base rate** (PR-AUC 0.065, ROC-AUC 0.70,
    Brier 0.026 = base rate); the honest benchmark is "alert everybody", because a miss costs 200–500 and
    a false alarm 7.
-4. **Caveat (mapping a):** the saving assumes an alert on a failing truck costs 0. If an alert is read as
-   "predicted class 1" (mapping b), the model saves only **148** vs. never alerting. The positive result
-   depends on mapping (a).
+4. **Caveat (mapping a):** the Q1 saving assumes that an alert on a failing truck costs nothing. If an alert is
+   read as "predicted class 1" (mapping b), the model saves only **148** vs. never alerting. The positive result
+   depends on mapping (a), and so does the baseline: "alert every truck" for 34,370 does not exist in the official
+   cost matrix. **Under the official 5 x 5 matrix, where every alert must name a class, the comparable result is
+   Q2 (section 11): 43,871 for the model against 49,566 for the best constant predictor ("always class 4").**
 5. The test split is untouched and is used once, at the very end. Deployed: sigmoid calibrator fitted
    without validation labels + threshold 0.0353 learned on the whole validation (the cost to quote is the
    cross-fitted 28,220, not the in-sample 27,565).
@@ -41,12 +43,13 @@ dashboard, prediction log, drift check (misses a x3 counter shift), docker compo
 
 ## 2. Evaluation protocol
 
-**Random-row cross validation was too optimistic.** The first protocol (5-fold CV, folds grouped by truck,
-random cut-offs) gave PR-AUC 0.13 for XGBoost, but its cut-offs lie far earlier in a truck's history than
+**Cross validation on random cut-offs (folds grouped by truck) was too optimistic; the gap was a distribution
+mismatch, not leakage.** No truck was ever on both sides of a fold. The first protocol (5-fold CV, folds grouped by
+truck, random cut-offs) gave PR-AUC 0.13 for XGBoost, but its cut-offs lie far earlier in a truck's history than
 the official validation's last readouts (median `time_step` 83 vs. 169, KS 0.425). On an evaluation set
 that imitates the validation, the same models score 1.4–2.5 × lower:
 
-| Model | Old CV (random rows) | Calibrated validation-like set | Literal set | Factor |
+| Model | Old CV (random cut-offs) | Calibrated validation-like set | Literal set | Factor |
 |---|---|---|---|---|
 | XGBoost | 0.1335 ± 0.0080 | 0.0530 ± 0.0045 | 0.0901 ± 0.0161 | 2.5 / 1.5 |
 | Logistic regression | 0.1098 ± 0.0055 | 0.0444 ± 0.0031 | 0.0781 ± 0.0076 | 2.5 / 1.4 |
@@ -106,7 +109,9 @@ It is worse than the logistic regression (-0.0107 ± 0.0138, better in 1/5 folds
 0.10) and the engineered features do not help it (-0.0034, 3/5 folds, noise). With ~117,000 tabular rows, 2.8 % positives
 and heavy-tailed counters, boosted trees remain the right tool; the network was not tuned (no search over width, depth
 or penalty). The early-stopping split inside `MLPClassifier` is by row, not by truck (the class cannot take groups); the
-reported PR-AUC comes from the outer grouped CV.
+reported PR-AUC comes from the outer grouped CV. **The MLP early stopping used a random row split:** its inner validation
+part contains other cut-offs of the training trucks, so the stopping signal is too optimistic and training probably
+stops too late; the comparison is therefore not fully fair to the MLP.
 
 Without the specs (−0.0069, 0/5 folds) or without `time_step` (−0.0061, 0/5) XGBoost is worse; engineered
 features help (+0.0101, 4/5).
@@ -290,8 +295,9 @@ The alpha of Ridge and Lasso is a tie.
 
 **Time-series features and LightGBM (09.11, `make rul-timeseries`, `reports/rul_timeseries_fd001.csv`,
 MLflow experiment `failsense-rul`).** Constant columns are removed inside the Pipeline (`VarianceThreshold`,
-fitted per fold; settings 3 and 7 constant sensors in FD001); for the informative sensors the trailing
-rolling mean and std over 5 and 15 cycles are added (60 more columns; windows only look backwards within
+fitted per fold; in FD001 these are `setting_3` and 6 constant sensors (1, 5, 10, 16, 18, 19), 7 constant
+columns); for the 15 informative sensors the trailing
+rolling mean and std over 5 and 15 cycles are added (15 x 2 x 2 = 60 more columns; windows only look backwards within
 one engine, a test pins this). Same 5 folds grouped by engine, RUL cap 125, LightGBM not tuned
 (300 rounds, 15 leaves, `min_child_samples` 50).
 
@@ -473,8 +479,9 @@ trucks, 136 positives, prevalence 0.027), test split untouched.
   that already moves the alert rate by 15 points: with 200 rows and a model that is fairly insensitive to the
   counter scale, output drift is a weak detector. It does not see input changes that leave the risk alone, and
   a drift of the risk is not a loss of accuracy (there are no production labels).
-* **Test coverage** (`make coverage`, also printed in CI): 986 tests, **83 % line + branch coverage** of
-  `src/failsense`. Lowest: the long-running `run()` entry points of the analysis scripts (class mix, matched
+* **Test coverage** (`make coverage`, also printed in CI): the suite has **1,155 tests** (11.11.2026). The
+  coverage of **83 % (line + branch)** of `src/failsense` was measured on 09.11.2026 with the 986 tests of that
+  day and has not been measured again since. Lowest: the long-running `run()` entry points of the analysis scripts (class mix, matched
   check, explain, calibrate, anomaly: 39-65 %, they are run by hand and their helpers are tested) and
   `dashboard/app.py`, which shows 0 % only because Streamlit's headless `AppTest` executes it outside
   coverage's tracing; it is tested (30 tests of the page).
@@ -498,6 +505,11 @@ registered. This agrees with section 4 (the Optuna search gave +0.0015 PR-AUC, i
 champion saves only 7 % against "never alert" on this holdout (the evaluation rows are mostly class 1, whose miss
 costs 200), against 51 % on the official validation (mostly class 4, miss costs 500): the size of a cost saving
 depends on the class mix as much as on the model.
+
+**The retrain holdout was also used for Optuna:** the evaluation rows of fold 0 were part of the objective of the
+hyperparameter search (mean PR-AUC over all five folds), so the holdout is not independent of the challenger and the
+comparison is biased in its favour. It lost anyway, which makes "keep the champion" the safe reading; a real retrain
+needs a holdout that no search has seen.
 
 A promoted version would also need its own calibrator: `deployment_choice.model_version` records the version the
 calibrator was fitted for and the API refuses any other version until `make calibrate` is run.
