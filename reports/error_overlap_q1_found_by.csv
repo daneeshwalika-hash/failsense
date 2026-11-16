@@ -1,0 +1,6 @@
+class,n,all,only_logreg,only_xgboost,only_mlp,none,other_combination
+1,16,14,0,0,1,0,1
+2,14,12,2,0,0,0,0
+3,30,22,1,0,1,0,6
+4,76,68,0,0,1,0,7
+total,136,116,3,0,3,0,14

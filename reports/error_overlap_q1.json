@@ -1,0 +1,159 @@
+{
+  "thresholds": {
+    "logreg": {
+      "threshold": 0.930546266547851,
+      "cost": 27767.0,
+      "n_alerts": 3812
+    },
+    "xgboost": {
+      "threshold": 0.07129441201686859,
+      "cost": 27565.0,
+      "n_alerts": 3013
+    },
+    "mlp": {
+      "threshold": 4.0019483999036343e-07,
+      "cost": 29735.0,
+      "n_alerts": 4238
+    }
+  },
+  "n_trucks": 5046,
+  "pairs": [
+    {
+      "error": "fn",
+      "group": "logreg",
+      "n": 5,
+      "jaccard": NaN
+    },
+    {
+      "error": "fn",
+      "group": "xgboost",
+      "n": 18,
+      "jaccard": NaN
+    },
+    {
+      "error": "fn",
+      "group": "mlp",
+      "n": 3,
+      "jaccard": NaN
+    },
+    {
+      "error": "fn",
+      "group": "logreg & xgboost",
+      "n": 3,
+      "jaccard": 0.15
+    },
+    {
+      "error": "fn",
+      "group": "logreg & mlp",
+      "n": 0,
+      "jaccard": 0.0
+    },
+    {
+      "error": "fn",
+      "group": "xgboost & mlp",
+      "n": 3,
+      "jaccard": 0.16666666666666666
+    },
+    {
+      "error": "fn",
+      "group": "all",
+      "n": 0,
+      "jaccard": 0.0
+    },
+    {
+      "error": "fp",
+      "group": "logreg",
+      "n": 3681,
+      "jaccard": NaN
+    },
+    {
+      "error": "fp",
+      "group": "xgboost",
+      "n": 2895,
+      "jaccard": NaN
+    },
+    {
+      "error": "fp",
+      "group": "mlp",
+      "n": 4105,
+      "jaccard": NaN
+    },
+    {
+      "error": "fp",
+      "group": "logreg & xgboost",
+      "n": 2761,
+      "jaccard": 0.7237221494102228
+    },
+    {
+      "error": "fp",
+      "group": "logreg & mlp",
+      "n": 3481,
+      "jaccard": 0.8085946573751451
+    },
+    {
+      "error": "fp",
+      "group": "xgboost & mlp",
+      "n": 2778,
+      "jaccard": 0.6579819990525817
+    },
+    {
+      "error": "fp",
+      "group": "all",
+      "n": 2674,
+      "jaccard": 0.6168396770472895
+    }
+  ],
+  "found_by": [
+    {
+      "class": "1",
+      "n": 16,
+      "all": 14,
+      "only_logreg": 0,
+      "only_xgboost": 0,
+      "only_mlp": 1,
+      "none": 0,
+      "other_combination": 1
+    },
+    {
+      "class": "2",
+      "n": 14,
+      "all": 12,
+      "only_logreg": 2,
+      "only_xgboost": 0,
+      "only_mlp": 0,
+      "none": 0,
+      "other_combination": 0
+    },
+    {
+      "class": "3",
+      "n": 30,
+      "all": 22,
+      "only_logreg": 1,
+      "only_xgboost": 0,
+      "only_mlp": 1,
+      "none": 0,
+      "other_combination": 6
+    },
+    {
+      "class": "4",
+      "n": 76,
+      "all": 68,
+      "only_logreg": 0,
+      "only_xgboost": 0,
+      "only_mlp": 1,
+      "none": 0,
+      "other_combination": 7
+    },
+    {
+      "class": "total",
+      "n": 136,
+      "all": 116,
+      "only_logreg": 3,
+      "only_xgboost": 0,
+      "only_mlp": 3,
+      "none": 0,
+      "other_combination": 14
+    }
+  ],
+  "vehicles_sorted": true
+}

@@ -1,4 +1,4 @@
-.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model retrain freeze freeze-verify rehearse drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix q2 anomaly figures test leakage lint
+.PHONY: help setup data parquet validate train cv regularization compare mlp tune evaluate register calibrate serve dashboard simulate compose-up compose-down publish-model retrain freeze freeze-verify rehearse drift-reference drift-check coverage explain matched-check rul-baseline rul-timeseries analysis unsupervised class-mix error-overlap q2 anomaly figures test leakage lint
 
 help:   ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
@@ -100,6 +100,9 @@ analysis:  ## Outlier analysis and time_step check (writes CSV/Markdown/figures 
 
 unsupervised:  ## PCA map + KMeans clusters of the training trucks (labels only for colour), figures/CSV in reports/
 	uv run python -m failsense.analysis.unsupervised
+
+error-overlap:  ## Validation only: overlap of the missed failures and false alarms of logreg, XGBoost and MLP (reports/error_overlap_q1*.csv)
+	uv run python -m failsense.analysis.error_overlap
 
 class-mix:  ## Why the calibrated eval set has another class mix than the validation (training data only)
 	uv run python -m failsense.analysis.class_mix

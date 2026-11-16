@@ -603,3 +603,53 @@ better than the mean predictor (+21.1 cycles for the mean predictor, interval [1
 * **Q2 and RUL give clearer wins** against their baselines than Q1 does against "alert everybody".
 * Not evaluated on test (by design, see the six decisions in `reports/test_evaluation_final.json`): MLP, LightGBM for
   Q1, anomaly detectors and the challenger.
+
+## 16. Error analysis on the validation: who misses which failures? (16.11.2026, validation only)
+
+Run after the test evaluation, on the **official validation split only** (`make error-overlap`,
+`src/failsense/analysis/error_overlap.py`, tables `reports/error_overlap_q1_pairs.csv` and
+`reports/error_overlap_q1_found_by.csv`). Logistic regression (L2, balanced) and the MLP (64-32) were fitted on the
+training split with the same 239 input columns as the registered XGBoost model; the XGBoost scores come from
+`failsense-q1@candidate`. Each model uses **its own cost-optimal threshold on the validation** (primary cost mapping),
+chosen in sample on the same trucks, so these are best-case operating points, not out-of-sample costs.
+Check: XGBoost reproduces the known 3,013 alerts and cost 27,565.
+
+| Model | Threshold | Alerts (of 5,046) | Cost | Missed failures (FN, of 136) | False alarms (FP) |
+|---|---|---|---|---|---|
+| Logistic regression | 0.931 | 3,812 | 27,767 | 5 | 3,681 |
+| XGBoost (registered) | 0.071 | 3,013 | **27,565** | 18 | 2,895 |
+| MLP | 4e-7 (uncalibrated) | 4,238 | 29,735 | 3 | 4,105 |
+
+**Overlap of the errors** (Jaccard = intersection / union):
+
+| | Missed failures (FN) | False alarms (FP) |
+|---|---|---|
+| logreg & XGBoost | 3 (0.15) | 2,761 (0.72) |
+| logreg & MLP | 0 (0.00) | 3,481 (0.81) |
+| XGBoost & MLP | 3 (0.17) | 2,778 (0.66) |
+| all three | **0** | 2,674 (0.62) |
+
+**Failures found, by class** (found = the model alerts the truck):
+
+| Class | Failures | Found by all three | Only logreg | Only XGBoost | Only MLP | Other combination | Found by none |
+|---|---|---|---|---|---|---|---|
+| 1 | 16 | 14 | 0 | 0 | 1 | 1 | 0 |
+| 2 | 14 | 12 | 2 | 0 | 0 | 0 | 0 |
+| 3 | 30 | 22 | 1 | 0 | 1 | 6 | 0 |
+| 4 | 76 | 68 | 0 | 0 | 1 | 7 | 0 |
+| total | 136 | 116 | 3 | **0** | 3 | 14 | **0** |
+
+**Reading, honestly:**
+
+* **No failure is missed by all three models, and XGBoost finds no failure that the other two miss.** The
+  errors on the failures barely overlap (no truck is missed by all three), but this is mostly an effect of the
+  operating point: with a miss costing 200-500 and a false alarm 7, the cost-optimal rule alerts 60-84 % of all
+  trucks. The more a model alerts, the fewer failures it misses: the MLP alerts the most (84 %) and misses 3, XGBoost
+  alerts the fewest (60 %) and misses 18.
+* The false alarms overlap strongly (Jaccard 0.62-0.81): most healthy trucks that get an alert from one model get it
+  from the others too. The three models rank the trucks similarly and differ mainly in how many they alert.
+* XGBoost is the cheapest only by a small margin (27,565 vs. 27,767 for logistic regression, 0.7 %); with the
+  in-sample thresholds and no interval this is not a clear win, in line with the model comparison of section 3.
+* The MLP's probabilities are uncalibrated (threshold 4e-7), so its threshold is fragile.
+* Limit: the comparison is at the cost-optimal threshold of each model, not at an equal alert rate. A comparison at
+  the same number of alerts (for example 3,013 each) would show better whether the models find different failures.

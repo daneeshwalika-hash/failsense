@@ -1,0 +1,15 @@
+error,group,n,jaccard
+fn,logreg,5,
+fn,xgboost,18,
+fn,mlp,3,
+fn,logreg & xgboost,3,0.15
+fn,logreg & mlp,0,0.0
+fn,xgboost & mlp,3,0.16666666666666666
+fn,all,0,0.0
+fp,logreg,3681,
+fp,xgboost,2895,
+fp,mlp,4105,
+fp,logreg & xgboost,2761,0.7237221494102228
+fp,logreg & mlp,3481,0.8085946573751451
+fp,xgboost & mlp,2778,0.6579819990525817
+fp,all,2674,0.6168396770472895
