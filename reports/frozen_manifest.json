@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-11-09T12:38:47+00:00",
-  "code_commit": "a23349c572b32962ea7bd941d45cee39c65e6826",
-  "uv_lock_sha256": "b46f2f623d923a1db6c084058ac4f28f029743631458662a4de93356be2dd890",
+  "created_at": "2026-11-16T10:02:06+00:00",
+  "code_commit": "32575610b6ce02d79722e685eb2d57c6a246ae42",
+  "uv_lock_sha256": "1ad8c9042764295a18ddf5602497e9733cef8b7dcdc12f40b321df3fcd44e40e",
   "config": {
     "seed": 42,
     "labels": {
@@ -107,14 +107,22 @@
     "q1_model/requirements.txt": "12150853b11b204eecff4fb5caf6395df60dc21cae26d23cd766d06900ea82a9",
     "q1_model/serving_input_example.json": "29313fe960669774de8426d5e78d24b935e947dd070b4bdfac898bec8a069b87",
     "q2_meta.json": "b9850dd4b2fdc5ef89cfed4fce51be221ba1d245fe61c51c5f266472598534d5",
-    "q2_model.skops": "733a9628b84eb5f30075c4b09186a9f28d89ce41f64dbff7e968ab3a2262b46f",
-    "rul_lightgbm.skops": "a286bfbec6b0c21514a640d9fbb1851081e852b27ea8cc34af3ff5de57a4dc0b",
+    "q2_model.skops": "c39948032c3638c6eba31a5aa560a88f08317e9dc282dcfb07f62e779bc1241e",
+    "rul_lightgbm.skops": "524ceb5b6486e8ba423048d85677f1193ce5358cb2a512ceba9241a7476d1f81",
     "rul_meta.json": "a85962bfde8115c1a500d48823d41f8c0aed82bb22ebafa48c1ef81cd2465f28",
-    "rul_ridge.skops": "51d9bb4c516c78a46ab7d45df2ffa4b852ead0881fc091033e0fff6489c50418"
+    "rul_ridge.skops": "456cd206093c053ef5e420b04b4d687ba0944b542066cbdb3130d05b83e962e9"
   },
   "source_files": {
     "reports/registry_q1.json": "2fab0ae19499f8a445a531c143e63b1693db0465b999964d2e93096a6096a9b1",
-    "reports/calibration_q1_summary.json": "fa75513972f15872ac47f21665fade260e94c8f6952717d3e928a8684020d726"
+    "reports/calibration_q1_summary.json": "fa75513972f15872ac47f21665fade260e94c8f6952717d3e928a8684020d726",
+    "scripts/evaluate_test_once.py": "f124e80a20c7f47b2c5b6d9b89a70ef943a3aa555a360d4580e019e4ca5da545",
+    "compose.yaml": "b5ffdbb9bb5cf9eb9b8cc1ce5542a923ec711314cd4a587ce2b990ce8e096a70",
+    "Dockerfile": "e379234e6f95e219a9aad19cb2ce746add9b8e27ad9cc460b7e46821d99bf81d",
+    ".env.example": "b3b690ecad064caa5d2af90e5097eda7ccf6e6d562c976cccbbf10801391457f",
+    "prompts/maintenance_report_de.md": "e59765b369dcdf256a2b95ae298c297f5f4216a12b4a38b88d7de309094d22fe",
+    "models/failsense-q1/model.skops": "4455aab692355c9a379d085b2375b2e9000a0af7f61a4c45516413bf907a59da",
+    "models/failsense-q1/source.json": "c4bfcdb46350c9370d4f6d32aa98fed5058dcfc6f9cb167ed38a7324ab2027e1",
+    "models/failsense-q1/trusted_types.json": "ee476286cda7683a2ee95d56ca5078ac9a9c6ddc6b4b357e6d2698793e506fa5"
   },
   "test_files": {
     "scania_readouts": {
