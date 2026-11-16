@@ -513,3 +513,93 @@ needs a holdout that no search has seen.
 
 A promoted version would also need its own calibrator: `deployment_choice.model_version` records the version the
 calibrator was fitted for and the API refuses any other version until `make calibrate` is run.
+
+## 15. Final test evaluation (16.11.2026)
+
+The SCANIA and C-MAPSS test splits were evaluated **exactly once** (16.11.2026, code commit `3257561`, frozen
+manifest `reports/frozen_manifest.json`, single run `scripts/evaluate_test_once.py --approved-single-run`). Models,
+calibrator and threshold (0.0353) were frozen before the run; the rehearsal on the validation split reproduced the
+known numbers first (5,046 trucks, 136 positives, PR-AUC 0.0653, 3,013 alerts, cost 27,565). No re-tuning, no second
+run. Full output: `reports/test_evaluation_final.json`. Intervals are 95 % bootstrap intervals over trucks
+(1,000 resamples). The test split has 5,045 trucks and 142 failing ones (prevalence 2.8 %).
+
+**Schedule note:** the plan (ADR / `docs/test_evaluation_plan.md`) said 17.11.2026. The run was brought forward to
+16.11.2026 on the author's decision after the course project was accepted.
+
+### 15.1 Q1: will Component X need a repair within 48 time steps?
+
+| Metric | Test | Validation (for comparison) |
+|---|---|---|
+| PR-AUC | **0.0711** (95 % CI 0.0524-0.1035; base rate 0.0281, lift 2.5) | 0.0653 |
+| ROC-AUC | **0.714** (95 % CI 0.672-0.751) | about 0.70 |
+| Alerts | 2,080 of 5,045 (41.2 %) | 3,013 of 5,046 (59.7 %) |
+| Recall | **71.1 %** (101 of 142) | 85 % (cross-fitted) |
+| Precision | **4.9 %** | 3.9 % |
+
+Confusion matrix at the frozen threshold:
+
+| | predicted no alert | predicted alert |
+|---|---|---|
+| actually no failure | TN 2,924 | FP 1,979 |
+| actually failing | FN 41 | TP 101 |
+
+Recall per urgency class (class 1 = failure furthest away, class 4 = closest): class 1 **61.5 %**, class 2 **80.0 %**,
+class 3 **78.0 %**, class 4 **68.3 %**.
+
+Cost (SCANIA cost matrix, primary mapping = an alert on a failing truck costs nothing, as in section 5):
+
+| Policy | Cost | Per truck |
+|---|---|---|
+| Model (frozen threshold) | **29,853** | 5.92 |
+| Alert every truck | 34,321 | 6.80 |
+| Never alert | 56,100 | 11.12 |
+
+The model saves **4,468 (13 %) against "alert every truck"** and 26,247 (47 %) against never alerting. The paired
+bootstrap interval of the difference to "always alert" is **[-9,373, +455]**: the model was cheaper in 96.2 % of the
+resamples, but the interval contains 0, so the saving over the honest benchmark is **not statistically
+established**. Under the literal mapping (every alert counts as "predicted class 1", mapping b) the model costs
+**58,253**, which is **2,153 more than never alerting** (56,100) and 15,368 less than always alerting (73,621).
+
+### 15.2 Q2: how close is the failure (classes 0-4), 5 x 5 cost matrix
+
+Test class counts: 4,903 / 26 / 15 / 41 / 60 (classes 0-4).
+
+| Decision rule | Cost | Predicted class 4 |
+|---|---|---|
+| Model, corrected expected cost (the reported variant) | **40,960** | 3,814 trucks |
+| Model, uncorrected expected cost | 40,545 | 3,014 trucks |
+| Model, argmax (macro-F1 0.203) | 55,620 | 3 trucks |
+| Best constant predictor, "always class 4" (frozen choice, also best on test) | **49,671** | all |
+| Never alert / always class 0 | 56,100 | none |
+
+The corrected model is **8,711 cheaper than the best constant** (bootstrap 95 % interval [-10,917, -6,199], cheaper in
+100 % of the resamples). The difference between the corrected and the uncorrected rule (+415, interval
+[-1,629, +2,216]) is noise. The same limit as on validation remains: the model does **not resolve the urgency
+classes**. Corrected, 3,814 of 5,045 trucks and 57 of 60 class-4 trucks, but also all class-1 and class-2 failures,
+land in class 4; the cost advantage comes from the cost matrix, not from separating classes 1-3.
+
+### 15.3 RUL (NASA C-MAPSS FD001, 100 test engines, RUL cap 125)
+
+| Model | RMSE (capped) | 95 % CI | RMSE (raw RUL) | NASA score |
+|---|---|---|---|---|
+| LightGBM + rolling mean/std | **17.96** | 14.90-21.08 | 18.89 | 936 |
+| Ridge (raw features, reference) | 20.83 | 18.15-23.67 | 21.90 | 1,321 |
+| Mean predictor | 41.94 | 37.89-46.45 | 43.07 | 33,629 |
+
+LightGBM is 2.87 cycles better than Ridge (paired interval [-5.71, +0.01], borderline: it just contains 0) and clearly
+better than the mean predictor (+21.1 cycles for the mean predictor, interval [16.6, 26.3]).
+
+### 15.4 Honest reading
+
+* **Q1 still ranks only weakly.** PR-AUC 0.071 is 2.5 times the base rate and agrees with validation (0.065, inside
+  the interval); there was no leakage-type jump. ROC-AUC 0.71 shows real but modest ranking.
+* **Recall fell from 85 % (validation) to 71 %, alerts fell from 60 % to 41 %.** The threshold was chosen on the
+  validation split, so validation was optimistic (as stated in section 9); the score distribution of the test trucks
+  also differs from the validation trucks. The class-1 recall (61.5 %) is the weakest, as the early classes are the
+  hardest.
+* **The business result is smaller than on validation and not significant against "alert every truck"** (13 % saving,
+  interval contains 0). The sign agrees with validation; the size is uncertain. Under the literal mapping the model
+  is worse than never alerting.
+* **Q2 and RUL give clearer wins** against their baselines than Q1 does against "alert everybody".
+* Not evaluated on test (by design, see the six decisions in `reports/test_evaluation_final.json`): MLP, LightGBM for
+  Q1, anomaly detectors and the challenger.

@@ -5,8 +5,9 @@
 
 End-to-end predictive maintenance system on real truck fleet data: predicts component failures, estimates remaining useful life (RUL), detects anomalies and explains its predictions.
 
-> **Status (11.11.2026):** version 1.0, code complete. **Final test evaluation pending — scheduled after course
-> review (17.11.2026).** Every number below comes from cross validation or from the official validation split.
+> **Status (16.11.2026):** version 1.0, code complete. **Final test evaluation done (16.11.2026), see
+> [Final test evaluation](#final-test-evaluation).** Unless marked "test", the numbers below come from cross
+> validation or from the official validation split.
 
 ## Requirements
 
@@ -95,9 +96,8 @@ Dependency notes:
 * **Q2 does not resolve the urgency classes:** 88 % of healthy trucks and all failures land in class 4.
 * **The anomaly detectors (Q4) are near random** (PR-AUC 0.030-0.032 vs. 0.027).
 * **The drift check misses a x3 shift of the counters with 200 rows** (flags x10 and above); output drift only.
-* **The test split has not been evaluated.** Final test evaluation pending — scheduled after course review
-  (17.11.2026). The validation split was also used to choose the alert threshold, so its numbers are slightly
-  optimistic.
+* **Validation numbers are slightly optimistic.** The validation split was also used to choose the alert threshold;
+  on the test split recall fell from 85 % to 71 % (section "Final test evaluation").
 * **The German LLM report needs its checks.** The first real answer of the local LLM passed the schema, factor and
   language checks and still contained invented numbers (section "German maintenance report").
 * Details: [docs/results.md](docs/results.md) section 9 and the [model card](docs/model_card.md).
@@ -107,9 +107,8 @@ Dependency notes:
 **Full results with tables, figures and limitations: [docs/results.md](docs/results.md)** (results of 09.11.2026,
 text revised 11.11.2026). The sections below are the short version.
 
-> **Test results:** Final test evaluation pending — scheduled after course review (17.11.2026). The single, frozen
-> evaluation of Q1, Q2 and RUL on the test splits will be reported here and in `docs/results.md`, whatever it shows
-> (section "Final test evaluation" below).
+> **Test results:** the single, frozen evaluation of Q1, Q2 and RUL on the test splits was run on 16.11.2026; see
+> section "Final test evaluation" below and [docs/results.md](docs/results.md) section 15.
 
 Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **training** split:
 5-fold cross validation, folds grouped by truck, 5 random cut-offs per truck, PR-AUC
@@ -381,23 +380,36 @@ Intended use, data, metrics and limits of the deployed model: [docs/model_card.m
 
 ## Final test evaluation
 
-**Final test evaluation pending — scheduled after course review (17.11.2026).** The test splits (SCANIA and C-MAPSS)
-are evaluated exactly once, with frozen models, a frozen calibrator and a frozen threshold; the plan and the six
-decisions fixed in advance are in [docs/test_evaluation_plan.md](docs/test_evaluation_plan.md). Order on the test day:
+The SCANIA and C-MAPSS test splits were evaluated **once, on 16.11.2026**, with frozen models, a frozen calibrator and
+a frozen threshold (plan: [docs/test_evaluation_plan.md](docs/test_evaluation_plan.md); the run was brought forward
+from 17.11.2026). The rehearsal on validation reproduced the known numbers first. No re-tuning, no second run. Full
+tables and intervals: [docs/results.md](docs/results.md) section 15; raw output: `reports/test_evaluation_final.json`.
+
+| | Result on the test split | 95 % bootstrap CI |
+|---|---|---|
+| **Q1** PR-AUC (base rate 0.028) | **0.0711** (lift 2.5) | 0.052-0.104 |
+| Q1 ROC-AUC | 0.714 | 0.672-0.751 |
+| Q1 alerts / recall / precision | 2,080 of 5,045 (41 %) / 71.1 % / 4.9 % | |
+| Q1 confusion matrix | TP 101, FP 1,979, FN 41, TN 2,924 | |
+| Q1 recall per class 1 / 2 / 3 / 4 | 61.5 % / 80.0 % / 78.0 % / 68.3 % | |
+| Q1 cost: model / alert all / never alert | **29,853** / 34,321 / 56,100 | saving vs. alert all: [-9,373, +455] |
+| **Q2** cost: model / best constant ("always 4") | **40,960** / 49,671 | difference [-10,917, -6,199] |
+| **RUL** RMSE (cap 125): LightGBM / Ridge / mean | **17.96** / 20.83 / 41.94 cycles | 14.9-21.1 (LightGBM) |
+
+**Honest reading:** Q1 still ranks only weakly (PR-AUC 2.5 x the base rate, in line with validation). The 13 % saving
+against "alert every truck" is **not statistically established** (the interval contains 0), and under the literal cost
+mapping the model costs more than never alerting (58,253 vs. 56,100). Recall fell from 85 % (validation, where the
+threshold was chosen) to 71 %. Q2 beats the best constant predictor clearly but does not resolve the urgency classes
+(most trucks land in class 4). The RUL model beats Ridge by 2.9 cycles (borderline) and the mean predictor clearly.
+
+Order that was used (for reproduction on the same commit):
 
 ```bash
-uv run python -m failsense.freeze --replace   # 1. re-freeze on the final commit (training data only), commit the manifest
-make freeze-verify                             # 2. hashes, config, library versions, clean git tree
-make rehearse                                  # 3. REHEARSAL on the VALIDATION split: no lock, no test file opened
-uv run python scripts/evaluate_test_once.py --approved-single-run   # 4. the single run (only with approval)
+uv run python -m failsense.freeze --replace   # re-freeze (training data only), commit the manifest
+make freeze-verify                             # hashes, config, library versions, clean git tree
+make rehearse                                  # rehearsal on the VALIDATION split
+uv run python scripts/evaluate_test_once.py --approved-single-run   # the single run (refuses a second run)
 ```
-
-`make rehearse` runs the same code path on the validation split and must reproduce the known validation numbers of
-the frozen Q1 model (5,046 trucks, 136 positives, PR-AUC 0.0653, 3,013 alerts, cost 27,565 at the frozen threshold);
-it writes its result to the log and to the system temp folder, never into the repository. Before the lock is created
-the single run loads and checks every frozen model, so a broken file cannot use up the run. Between the freeze and
-the single run nothing may be written into the repository (`git status` must be empty; no `make drift-check`, no
-`make figures`).
 
 ## License
 

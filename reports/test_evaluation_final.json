@@ -1,0 +1,277 @@
+{
+  "run_at": "2026-11-16T10:04:44+00:00",
+  "code_commit": "32575610b6ce02d79722e685eb2d57c6a246ae42",
+  "decisions": [
+    "RUL model: LightGBM + rolling mean/std; baselines: Ridge (raw) and the mean predictor",
+    "RUL primary reference: the RUL capped at rul.cap; secondary: raw RUL and the NASA score",
+    "Q2 target mix: the class mix published for the validation, never the test counts (ADR 0004)",
+    "Q1 headline: primary cost mapping first, literal next to it; never / always alert baselines",
+    "Not evaluated on test: MLP, LightGBM for Q1, anomaly detectors and feature, the challenger",
+    "Results are reported as they are: no re-tuning and no second run"
+  ],
+  "n_bootstrap": 1000,
+  "q1": {
+    "n_trucks": 5045,
+    "n_positives": 142,
+    "prevalence": 0.028146679881070367,
+    "threshold": 0.0353238553943719,
+    "alert_rate": 0.4122893954410307,
+    "confusion": {
+      "tp": 101,
+      "fp": 1979,
+      "fn": 41,
+      "tn": 2924
+    },
+    "precision": 0.04855769230769231,
+    "recall": 0.7112676056338029,
+    "recall_per_class": {
+      "1": 0.6153846153846154,
+      "2": 0.8,
+      "3": 0.7804878048780488,
+      "4": 0.6833333333333333
+    },
+    "pr_auc": {
+      "value": 0.07114532054834671,
+      "ci95": [
+        0.05238008559030066,
+        0.1034976069747962
+      ],
+      "prevalence": 0.028146679881070367,
+      "lift": 2.5276629730028817
+    },
+    "roc_auc": {
+      "value": 0.7138658998658483,
+      "ci95": [
+        0.6715239534989814,
+        0.7508082719961392
+      ]
+    },
+    "cost": {
+      "primary": {
+        "model": 29853.0,
+        "never_alert": 56100.0,
+        "always_alert": 34321.0,
+        "saving_vs_always_alert": 4468.0,
+        "saving_vs_never_alert": 26247.0,
+        "model_minus_always_alert_bootstrap": {
+          "diff": -4468.0,
+          "std": 2526.9583900571215,
+          "ci_low": -9373.125,
+          "ci_high": 455.0,
+          "share_a_cheaper": 0.962
+        }
+      },
+      "literal": {
+        "model": 58253.0,
+        "never_alert": 56100.0,
+        "always_alert": 73621.0,
+        "saving_vs_always_alert": 15368.0,
+        "saving_vs_never_alert": -2153.0,
+        "model_minus_always_alert_bootstrap": {
+          "diff": -15368.0,
+          "std": 885.7355128782935,
+          "ci_low": -17097.7,
+          "ci_high": -13657.925,
+          "share_a_cheaper": 1.0
+        }
+      }
+    }
+  },
+  "q2": {
+    "n_trucks": 5045,
+    "class_counts": [
+      4903,
+      26,
+      15,
+      41,
+      60
+    ],
+    "constant_baselines": {
+      "always_0": 56100.0,
+      "always_1": 73621.0,
+      "always_2": 65606.0,
+      "always_3": 56440.0,
+      "always_4": 49671.0
+    },
+    "frozen_best_constant": "always_4",
+    "best_constant_on_test": "always_4",
+    "decisions": {
+      "uncorrected_expected_cost": {
+        "total_cost": 40545.0,
+        "macro_f1": 0.09846543290217646,
+        "predicted_counts": [
+          1463,
+          2,
+          99,
+          467,
+          3014
+        ]
+      },
+      "corrected_expected_cost": {
+        "total_cost": 40960.0,
+        "macro_f1": 0.08532403207565736,
+        "predicted_counts": [
+          1225,
+          0,
+          0,
+          6,
+          3814
+        ]
+      },
+      "uncorrected_argmax": {
+        "total_cost": 55620.0,
+        "macro_f1": 0.20347338935574227,
+        "predicted_counts": [
+          5042,
+          0,
+          0,
+          0,
+          3
+        ]
+      }
+    },
+    "paired_bootstrap_cost": {
+      "corrected_vs_uncorrected": {
+        "diff": 415.0,
+        "std": 1007.5167626089096,
+        "ci_low": -1629.05,
+        "ci_high": 2216.0,
+        "share_a_cheaper": 0.303
+      },
+      "corrected_vs_always_4": {
+        "diff": -8711.0,
+        "std": 1215.8315183515424,
+        "ci_low": -10916.55,
+        "ci_high": -6199.125000000001,
+        "share_a_cheaper": 1.0
+      }
+    },
+    "confusion_corrected": [
+      [
+        1217,
+        0,
+        0,
+        6,
+        3680
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        26
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        15
+      ],
+      [
+        5,
+        0,
+        0,
+        0,
+        36
+      ],
+      [
+        3,
+        0,
+        0,
+        0,
+        57
+      ]
+    ],
+    "confusion_uncorrected": [
+      [
+        1451,
+        2,
+        99,
+        458,
+        2893
+      ],
+      [
+        0,
+        0,
+        0,
+        3,
+        23
+      ],
+      [
+        1,
+        0,
+        0,
+        1,
+        13
+      ],
+      [
+        5,
+        0,
+        0,
+        1,
+        35
+      ],
+      [
+        6,
+        0,
+        0,
+        4,
+        50
+      ]
+    ]
+  },
+  "rul": {
+    "n_engines": 100,
+    "cap": 125,
+    "models": {
+      "lightgbm_rolling": {
+        "rmse_capped": 17.95843067513299,
+        "rmse_capped_ci95": [
+          14.902126359838444,
+          21.075616251842014
+        ],
+        "rmse_raw": 18.891240773107594,
+        "mae_capped": 13.114321463376225,
+        "nasa_score_raw": 935.794175850231
+      },
+      "ridge_raw": {
+        "rmse_capped": 20.83036857261251,
+        "rmse_capped_ci95": [
+          18.149452729342492,
+          23.67155410234724
+        ],
+        "rmse_raw": 21.904123097898747,
+        "mae_capped": 16.56870922953513,
+        "nasa_score_raw": 1321.2102410049908
+      },
+      "mean_predictor": {
+        "rmse_capped": 41.94179565195834,
+        "rmse_capped_ci95": [
+          37.8877082615838,
+          46.446436609086696
+        ],
+        "rmse_raw": 43.06703554245684,
+        "mae_capped": 34.83,
+        "nasa_score_raw": 33629.230598368384
+      }
+    },
+    "reference": "ridge_raw",
+    "paired_rmse_difference_vs_reference": {
+      "lightgbm_rolling": {
+        "diff": -2.871937897479519,
+        "ci95": [
+          -5.7108011598517034,
+          0.013855341611833943
+        ]
+      },
+      "mean_predictor": {
+        "diff": 21.111427079345827,
+        "ci95": [
+          16.582970913754373,
+          26.260820521279264
+        ]
+      }
+    }
+  }
+}

@@ -2,8 +2,8 @@
 
 Format after Mitchell et al., "Model Cards for Model Reporting" (2019). Numbers come from the files named
 in brackets; nothing here is a target that was set afterwards. Numbers of 09.11.2026, text revised 11.11.2026.
-The **test split has not been used**; the final test evaluation is pending (scheduled after course review,
-17.11.2026).
+The **test split was used once, on 16.11.2026** (section 4a); everything else comes from cross validation or the
+official validation split.
 
 ## 1. Model details
 
@@ -71,6 +71,27 @@ the number itself is: **use the risk for ranking and for the cost decision, not 
 Other questions on the same data (`docs/results.md`): classes 0-4 (Q2) do not resolve the urgency (88 % of
 healthy trucks and all positives are put into class 4); anomaly detection on healthy trucks is close to a
 random ranking (Q4); a neural network, LightGBM and random forest are not better than this XGBoost recipe.
+
+## 4a. Final test evaluation (single run, 16.11.2026)
+
+Frozen model, calibrator and threshold (0.0353); 5,045 test trucks, 142 failing (prevalence 2.8 %). Source:
+`reports/test_evaluation_final.json`; details in [results.md](results.md) section 15.
+
+| Metric | Test | 95 % bootstrap CI |
+|---|---|---|
+| PR-AUC | 0.0711 (base rate 0.0281, lift 2.5) | 0.052-0.104 |
+| ROC-AUC | 0.714 | 0.672-0.751 |
+| Alerts | 2,080 (41.2 %) | |
+| Recall / precision | 71.1 % / 4.9 % | |
+| Confusion matrix | TP 101, FP 1,979, FN 41, TN 2,924 | |
+| Recall per class 1 / 2 / 3 / 4 | 61.5 % / 80.0 % / 78.0 % / 68.3 % | |
+| Cost: model / alert all / never alert | 29,853 / 34,321 / 56,100 | saving vs. alert all [-9,373, +455] |
+| Q2 cost: model / best constant | 40,960 / 49,671 | [-10,917, -6,199] |
+| RUL RMSE: LightGBM / Ridge | 17.96 / 20.83 cycles | 14.9-21.1 (LightGBM) |
+
+Reading: recall is lower than on validation (85 %) because the threshold was tuned there. The cost saving against
+"alert every truck" (13 %) is not significant, and under the literal cost mapping the model is worse than never
+alerting (58,253 vs. 56,100). The model remains a weak ranker, suitable as decision support only.
 
 ## 5. Factors and subgroups
 
