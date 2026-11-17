@@ -3,6 +3,10 @@ name = "failsense"
 version = "1.0.0"
 description = "End-to-end predictive maintenance system: failure prediction, RUL, anomaly detection and explainability."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Daneesh Walika" }]
+keywords = ["predictive-maintenance", "machine-learning", "remaining-useful-life", "anomaly-detection", "shap", "mlflow", "fastapi"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "duckdb>=2.0.0",
@@ -27,6 +31,10 @@ dependencies = [
     # matters for the Docker image; this project has no GPU.
     "xgboost-cpu>=3.4.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/daneeshwalika-hash/failsense"
+Issues = "https://github.com/daneeshwalika-hash/failsense/issues"
 
 # FailSense is an application, not a published package. The build backend is only
 # used by `uv sync` to install src/failsense into .venv as an editable package, so
