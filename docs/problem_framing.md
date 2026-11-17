@@ -890,8 +890,8 @@ calibrated set: 94 true positives, 1,086 false alarms, 541 missed failures, 21,8
   engineered features from the truck's previous readouts** (§4, rule 3) before calling the model.
 - **Limitations.** XGBoost's study stopped at 24 of 40 trials (time cap); an unlimited search might find
   a better trial, but the scores of the best trials are flat (top-5 trials within 0.002) and fold noise
-  is ±0.009. Early stopping used the average-precision on random inner-validation rows (not the
-  validation-like distribution). The `matched` and `ts70` samplings were not tuned (decision of 7a).
+  is ±0.009. Early stopping used the average-precision on a truck-grouped inner validation whose cut-offs
+  are random (not the validation-like distribution). The `matched` and `ts70` samplings were not tuned (decision of 7a).
 
 **RUL baseline on NASA C-MAPSS FD001 (measured 05.11, `python -m failsense.rul.baseline`,
 `make rul-baseline`, MLflow experiment `failsense-rul`).** Training file only; the official

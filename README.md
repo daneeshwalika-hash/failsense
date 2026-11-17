@@ -3,11 +3,24 @@
 [![CI](https://github.com/daneeshwalika-hash/failsense/actions/workflows/ci.yml/badge.svg)](https://github.com/daneeshwalika-hash/failsense/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-End-to-end predictive maintenance system on real truck fleet data: predicts component failures, estimates remaining useful life (RUL), detects anomalies and explains its predictions.
 
-> **Status (16.11.2026):** version 1.0, code complete. **Final test evaluation done (16.11.2026), see
-> [Final test evaluation](#final-test-evaluation).** Unless marked "test", the numbers below come from cross
-> validation or from the official validation split.
+FailSense predicts whether a truck component needs a repair within 48 time steps (SCANIA Component X, real fleet data), estimates remaining useful life (NASA C-MAPSS FD001, simulated), flags anomalies and explains each prediction (SHAP, plus a checked German report from a local LLM). On the single, frozen test evaluation (16.11.2026) the failure model ranks trucks only weakly better than chance (PR-AUC 0.071 vs. a base rate of 0.028), and its cost saving against "alert every truck" (13 %) is not statistically established. The RUL model (RMSE 17.96 cycles vs. 20.83 for Ridge) and the 5-class cost model give clearer gains. The value of the project is a leak-free, reproducible pipeline and honest reporting, not a high score.
+
+> **Status (17.11.2026):** version 1.0, code complete. **Final test evaluation done (16.11.2026), see
+> [Final test evaluation](#final-test-evaluation).** Unless marked "test", the numbers further down come from cross
+> validation or from the official validation split (the state before the test run).
+
+## Results at a glance
+
+Single test run, frozen models, 95 % bootstrap intervals in [docs/results.md](docs/results.md) section 15.
+
+| Task | Metric | Test result | Baseline |
+|---|---|---|---|
+| Q1 repair within 48 steps | PR-AUC | 0.071 (CI 0.052-0.104) | base rate 0.028 |
+| Q1 | total cost (SCANIA cost matrix) | 29,853 | 34,321 alert every truck / 56,100 never alert |
+| Q1 | recall / precision | 71.1 % / 4.9 % | |
+| Q2 urgency classes 0-4 | total cost | 40,960 | 49,671 best constant ("always 4") |
+| Q3 RUL (C-MAPSS FD001) | RMSE in cycles (cap 125) | 17.96 | 20.83 Ridge, 41.94 mean |
 
 ## Requirements
 
@@ -39,7 +52,7 @@ make help       # all targets
 
 ### From zero to a running API
 
-*Verified on a clean clone: pending (17.11.2026). The order below is read from the `Makefile` and the code.*
+*Verified on a clean clone on 17.11.2026: path B (tests, ruff, seed registry, `make serve`, `GET /health`). Path A and the dashboard need the raw data and were not run in that check; their order is read from the `Makefile` and the code.*
 
 The API serves `models:/failsense-q1@candidate` from the **local MLflow registry** (`mlflow.db` and `mlartifacts/`,
 both git-ignored). A fresh clone has no registry, so `make serve` alone cannot work. There are three ways to get one.
@@ -89,6 +102,36 @@ Dependency notes:
 - **Docker:** `python:*-slim` images do not contain `libgomp1` either; the Dockerfile installs it
   (see the Docker section below), otherwise `import lightgbm` fails inside the container.
 
+## Project structure
+
+```
+src/failsense/
+  data/         CSV -> Parquet, pandera data contract, labels (classes 0-4, censoring), cut-off sampling, group splits
+  features/     the one feature builder used by training, validation and the API
+  models/       pipelines, CV comparisons, tuning (Optuna), registry, calibration, cost-based threshold, Q2, anomaly, retrain
+  rul/          C-MAPSS FD001: data, RUL labels, baselines, time-series features
+  explain/      SHAP and permutation importance
+  api/          FastAPI service (features -> score -> calibrated risk -> alert), prediction log (DuckDB)
+  dashboard/    Streamlit page (talks to the API only)
+  llm/          German maintenance report via Ollama, with checks and a template fallback
+  monitoring/   drift check (PSI + KS)   simulation/   stream replay   analysis/   extra analyses
+  freeze.py, evaluate_test.py   freeze and the single test run
+tests/          mirrors src/ (fixture data only, no raw data needed)
+configs/        config.yaml (paths, cost matrix, parameters)   docs/   results, model card, ADRs, plan
+reports/        saved result tables, figures and the final test output   scripts/   shell and helper scripts
+```
+
+## Tests
+
+```bash
+make test       # uv run pytest (1,162 tests, about 2 minutes, no raw data needed)
+make leakage    # only the data-leakage tests (pytest -m leakage)
+make coverage   # tests with a coverage report
+uv run ruff check . && uv run ruff format --check .
+```
+
+CI runs ruff and pytest with coverage on every push to `main` and every pull request, and builds the Docker images.
+
 ## Limitations (read this before the results)
 
 * **Q1 ranks only weakly better than chance** (PR-AUC 0.065 vs. base rate 0.027). The cost saving comes from the
@@ -128,8 +171,9 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 | + `log1p` on counters and histogram counts (**linear reference**) | 0.1098 ± 0.0055 | 0.1254 | +0.016 |
 | XGBoost, 300 rounds, untuned (no early stopping) | **0.1335 ± 0.0080** | 0.5147 | +0.381 |
 | XGBoost + engineered features | **0.1435 ± 0.0080** | 0.6124 | +0.469 |
-| MLP (64-32, early stopping, scaled) | 0.0992 ± 0.0101 | 0.7109 | +0.612 |
+| MLP (64-32, early stopping, scaled) (*) | 0.0992 ± 0.0101 | 0.7109 | +0.612 |
 
+- (*) The MLP's early stopping holds out **random rows** (scikit-learn `MLPClassifier`), so trucks appear on both sides of that inner split; the reported PR-AUC comes from the outer truck-grouped CV. The boosters use a truck-grouped inner split for early stopping. See [docs/results.md](docs/results.md) section 3.
 - The linear reference is about 4× better than the Dummy, but its score is **low**: a linear
   model is limited by bias (learning curve, `docs/problem_framing.md` §6). Tree ensembles
   (random forest, HistGradientBoosting, XGBoost, LightGBM) are clearly better (+0.021 to
@@ -154,7 +198,7 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
   found nothing clearly better). On the validation-like evaluation set it reaches PR-AUC 0.057 and
   ROC-AUC 0.66; alerting the riskiest 5 % of the trucks finds 15 % of the failures at 8 % precision
   (about 3 × the base rate).
-- **First look at the official validation** (136 of 5,046 trucks positive, test untouched):
+- **First look at the official validation** (136 of 5,046 trucks positive; state before the test run):
   PR-AUC 0.065 (95 % interval 0.048–0.102), ROC-AUC 0.70. The raw probabilities are about 4 × too
   high; a sigmoid calibrator fitted without validation labels brings the Brier score to the level of
   the base rate (0.026) but adds no skill over it. With the SCANIA cost matrix, "alert every truck"
@@ -165,7 +209,7 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 - **Deployment choice (06.11):** label-free sigmoid calibrator + alert threshold 0.0353 learned on the
   whole validation set; quote the cross-fitted cost 28,220, not the in-sample one. The saving depends
   on the primary cost mapping (an alert on a failing truck is free); under "alert = predicted class
-  1" the model saves only 148 vs. never alerting. The test split is still untouched.
+  1" the model saves only 148 vs. never alerting. (State before the test run; the test result is in "Final test evaluation".)
 - **Explanations (SHAP, `make explain`):** on the validation only two histogram groups (459, 291) lose
   PR-AUC clearly when shuffled; the group with the largest SHAP and gain (397) does not. SHAP values are
   in raw log-odds of the uncalibrated model; `top_shap_factors` returns the top features per truck.
@@ -194,7 +238,7 @@ Q1 (will Component X need a repair within 48 time steps?) on the SCANIA **traini
 
 **Q3 (remaining useful life) on NASA C-MAPSS FD001**, training engines only, 5-fold
 `GroupKFold` by engine, RUL capped at 125 cycles, RMSE in cycles (lower is better); the
-test file is untouched:
+test file was untouched at this point (test result: "Final test evaluation"):
 
 | Model | Validation RMSE | Training RMSE | MAE |
 |---|---|---|---|
@@ -365,7 +409,7 @@ version also needs `make calibrate`, or the API refuses it.
 registered version 1 -> API healthy -> dashboard; the German report came from Ollama on the host). CI builds both
 images and validates the compose file; the seed path (empty registry -> seed -> the production loader) and the
 Host-header behaviour are also tested without Docker. The read-only file mounts of the dashboard were changed on
-11.11.2026 (three validation files instead of `./data`) and have not been started since: check pending (17.11.2026).
+11.11.2026 (three validation files instead of `./data`) and have not been started since; only the compose file is validated (in CI), the dashboard container itself was not re-checked.
 
 ### Retraining and the model card
 
@@ -411,6 +455,10 @@ make rehearse                                  # rehearsal on the VALIDATION spl
 uv run python scripts/evaluate_test_once.py --approved-single-run   # the single run (refuses a second run)
 ```
 
+## What I learned
+
+Data leakage is mostly about the split, not the model: grouping by truck, fitting every transformer inside the cross-validation fold and using the test set exactly once changed my conclusions more than any model choice. Cross-validation on random cut-offs looked much better than the official validation until I matched the evaluation distribution. A cost matrix can make a weak ranker useful, and the honest benchmark is the trivial policy ("alert every truck"), not the dummy classifier. The threshold chosen on validation did not transfer fully (recall 85 % to 71 %), which is why I report intervals and keep claims smaller than the point estimates.
+
 ## License
 
 The code of this repository is released under the [MIT License](LICENSE), Copyright (c) 2026 Daneesh Walika.
@@ -432,6 +480,8 @@ The code is MIT-licensed; the datasets keep their own licences ([Data & Licenses
 | --- | --- | --- | --- |
 | SCANIA Component X (real truck fleet) | Failure classification, cost-based threshold, anomaly detection | Swedish National Data Service (SND, catalogue on researchdata.se), publisher Scania CV AB. **Version 3** (2025-04-09), [doi:10.5878/bnh5-ka77](https://doi.org/10.5878/bnh5-ka77) | **[Creative Commons Attribution 4.0 International (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/)**, open access: sharing and adapting are allowed with attribution; cite the dataset and the paper below |
 | Turbofan Engine Degradation Simulation (C-MAPSS, FD001) | Remaining useful life (RUL) | NASA Prognostics Data Repository, [PCoE data set page](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) (also [data.nasa.gov](https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data)) | **No licence stated** on the NASA pages (the catalog entry says "License not specified"); users are asked to acknowledge the repository and the data donators, and use the data at their own risk. Simulated data, not real engines |
+
+The cost matrix used for the total cost (5 x 5, classes 0-4) is Table 1 of Kharazian et al. (2025) and is stored in `configs/config.yaml`. The paper states that the dataset was introduced for the Industrial Challenge 2024 at the 22nd International Symposium on Intelligent Data Analysis (IDA) (quoted from the arXiv version, [2401.15199v2](https://arxiv.org/abs/2401.15199)).
 
 Raw data is never committed; `scripts/download_data.sh` prepares it in `data/raw/`.
 

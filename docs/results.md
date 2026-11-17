@@ -1,13 +1,14 @@
 # Results — FailSense (results of 09.11.2026, text revised 11.11.2026)
 
-> **Test results:** Final test evaluation pending — scheduled after course review (17.11.2026). The single, frozen
-> evaluation on the test splits ([test_evaluation_plan.md](test_evaluation_plan.md)) will be added here as its own
-> section, whatever it shows. Every number below comes from cross validation or from the official validation split.
+> **Test results:** the single, frozen evaluation on the test splits was run once on 16.11.2026 and is reported in
+> [section 15](#15-final-test-evaluation-16112026) (plan: [test_evaluation_plan.md](test_evaluation_plan.md)).
+> **Sections 1-14 describe the state before the test run on 16.11.2026**: every number there comes from cross
+> validation or from the official validation split, and "untouched" in those sections means "not yet used".
 
 All numbers below come from files in `reports/` or from the MLflow runs (experiments `failsense-q1-binary`,
 `failsense-rul`, `failsense-q2-classes`, `failsense-anomaly`, `failsense-unsupervised`,
 `failsense-retrain`); the source is named next to each table. Design, decisions and the history of every
-choice are in [problem_framing.md](problem_framing.md). **The test split has not been used**: no model, threshold,
+choice are in [problem_framing.md](problem_framing.md). **Before section 15 the test split had not been used**: no model, threshold,
 calibrator or feature choice uses it. ("Untouched" below always means this. `make parquet`, `make validate` and the
 EDA notebook read test files only for format conversion and schema checks, see
 [test_evaluation_plan.md](test_evaluation_plan.md), section 1a.)
@@ -27,7 +28,7 @@ EDA notebook read test files only for format conversion and schema checks, see
    depends on mapping (a), and so does the baseline: "alert every truck" for 34,370 does not exist in the official
    cost matrix. **Under the official 5 x 5 matrix, where every alert must name a class, the comparable result is
    Q2 (section 11): 43,871 for the model against 49,566 for the best constant predictor ("always class 4").**
-5. The test split is untouched and is used once, at the very end. Deployed: sigmoid calibrator fitted
+5. (State before the test run.) The test split was untouched and was used once, at the very end (section 15). Deployed: sigmoid calibrator fitted
    without validation labels + threshold 0.0353 learned on the whole validation (the cost to quote is the
    cross-fitted 28,220, not the in-sample 27,565).
 
@@ -281,8 +282,8 @@ fit rests on the evaluation set built by the same rank matching (circular).
 ## 8. RUL baseline so far (NASA C-MAPSS FD001, Q3)
 
 100 engines, 20,631 rows; RUL = max cycle − cycle, capped at 125; 5-fold `GroupKFold` by engine; RMSE in
-cycles (lower is better). Source: `reports/rul_baseline_fd001.csv`. The test file and `RUL_FD001.txt` are
-untouched.
+cycles (lower is better). Source: `reports/rul_baseline_fd001.csv`. The test file and `RUL_FD001.txt` were
+untouched at this point (test result: section 15.3).
 
 | Model | RMSE (mean ± std) | MAE |
 |---|---|---|
@@ -314,7 +315,7 @@ boosting model beats the best linear one by 1.5 ± 0.9 cycles (5/5 folds). **Lig
 vs. validation 18.1), so the real gain from tuning is probably small and not yet tested. The score is the RMSE
 over all cycles of held-out *training* engines with the RUL capped at 125, **not** the official test protocol
 (the last cycle of truncated test engines), so it is not comparable with published FD001 numbers. The test
-file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision for the end.
+file and `RUL_FD001.txt` were untouched at this point; the one-time test evaluation is in section 15.3.
 
 ## 9. Limitations and open points
 
@@ -352,8 +353,7 @@ file and `RUL_FD001.txt` are untouched; a one-time test evaluation is a decision
 - **The drift check misses a x3 shift of the counters with 200 rows** (PSI 0.075, KS p 0.012, although the alert
   rate rose from 55 % to 70 %); it flags x10 and above. It watches the output only and sees no input drift
   (section 13, ADR 0006; Evidently was rejected on 09.11).
-- **Open as of 11.11:** the **final test evaluation is pending** (scheduled after course review, 17.11.2026: one
-  frozen evaluation, with Daneesh's approval); the drift check is output-only and misses small shifts
+- **Open as of 11.11:** (the final test evaluation was done on 16.11.2026, section 15); the drift check is output-only and misses small shifts
   (section 13); MLP, LightGBM and the anomaly feature are untuned or unconfirmed; the cost matrix is the
   challenge's, not a fleet's. Bosch CNC is cut from v1.0 ([ADR 0003](adr/0003-cut-bosch-cnc.md)).
 - **The German LLM report (done on 09.11, with a lesson).** The docker compose stack was started on a fresh volume
@@ -393,7 +393,7 @@ truck's at the end of observation, which differs from the random cut-offs of the
 `failsense-q2-classes`. Multi-class XGBoost (`multi:softprob`, the Q1 winner's hyper-parameters, not
 re-tuned) on the `k5` training cut-offs, the same 239 inputs; decision = class with the lowest expected
 cost; the label shift is corrected with the class mix published in the dataset paper (ADR 0004). Official
-validation (5,046 trucks), test split untouched.
+validation (5,046 trucks); test split untouched at this point (Q2 test result: section 15.2).
 
 | Decision (total cost, 5 x 5 matrix) | Cost | Predicted class 4 for |
 |---|---|---|
@@ -425,7 +425,7 @@ validation (5,046 trucks), test split untouched.
 `make anomaly` (about 6 min), `reports/anomaly_q4_summary.json`, `anomaly_q4_detectors.csv`, MLflow
 experiment `failsense-anomaly`. Detectors are fitted on **healthy training trucks only** (21,277 trucks
 never repaired, 105,671 `k5` rows); the repair labels only evaluate the scores. Official validation (5,046
-trucks, 136 positives, prevalence 0.027), test split untouched.
+trucks, 136 positives, prevalence 0.027); the anomaly detectors were not evaluated on test (section 15.4).
 
 | Detector (higher score = more anomalous) | PR-AUC [95 % bootstrap] | ROC-AUC | Recall in the top 5 % |
 |---|---|---|---|
