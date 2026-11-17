@@ -33,8 +33,8 @@ official validation split.
   10.5878/bnh5-ka77, licence CC BY 4.0).
 * **Evaluation:** the official validation split, one row per truck (its last readout): 5,046 trucks, **136
   positives (2.70 %)**. Used for the threshold and for the numbers below, never for fitting.
-* **Test split:** not used for any model, threshold, calibrator or feature choice; to be evaluated once at the
-  very end. (`make parquet`, `make validate` and the EDA notebook read test files only for format conversion and
+* **Test split:** not used for any model, threshold, calibrator or feature choice; evaluated once, on 16.11.2026
+  (section 4a). (`make parquet`, `make validate` and the EDA notebook read test files only for format conversion and
   schema checks; the test labels have never been loaded for an analysis. Details: `docs/test_evaluation_plan.md`,
   section 1a.)
 * The data are real fleet data with anonymised variables; no personal data.
@@ -123,7 +123,7 @@ alerting (58,253 vs. 56,100). The model remains a weak ranker, suitable as decis
   healthy trucks and all failures are put into class 4); the anomaly detectors (Q4) are close to a random
   ranking; the German report was produced by a real local LLM only three times (09.11.2026), so its text quality
   is checked by rules, not by a user study.
-* **Before relying on the numbers:** evaluate once on the test split, estimate real workshop costs with the
+* **Before relying on the numbers:** (the single test evaluation is done, section 4a); estimate real workshop costs with the
   service department (the matrix is the challenge's, not this fleet's), and re-check calibration on recent
   labelled data.
 * **The risk is not an exact probability:** on average about 1.6x too high on the validation (0.04275 vs.
