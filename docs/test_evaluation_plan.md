@@ -1,11 +1,11 @@
 # Plan: one frozen evaluation on the test splits (Q1, Q2, RUL)
 
-**Status (11.11.2026): the single test run is scheduled for Tue 17.11.2026, after the course review. Nothing has
-been evaluated on test.** The evaluation script is written and tested on fixtures; since 10.11 it loads and checks
-every frozen model before the lock and has a rehearsal mode on the validation split. The freeze of 09.11 is
-superseded and will be repeated on the final commit. No model, threshold, calibrator or feature choice uses the test
-split, and the test labels have never been loaded for an analysis. What *has* read the test files (format conversion
-and schema checks only) is listed in section 1a. The test run needs Daneesh's separate approval.
+**Status (17.11.2026): the single test run was done on 16.11.2026**, one day earlier than planned below (see
+`docs/results.md` section 15 and `reports/test_evaluation_final.json`). The text below is the plan as written on
+11.11.2026, kept as it was; the "State" column of section 0 is updated. Before the run, no model, threshold,
+calibrator or feature choice used the test split, and the test labels had never been loaded for an analysis. What
+*has* read the test files (format conversion and schema checks only) is listed in section 1a. The run needed
+Daneesh's separate approval, which was given.
 
 ## 0. Order of events (schedule decided by Daneesh on 10.11.2026; it replaces the plan of 09.11)
 
@@ -13,10 +13,10 @@ and schema checks only) is listed in section 1a. The test run needs Daneesh's se
 |---|---|---|
 | 09.11 | Plan, six decisions, freeze code, evaluation script + fixture tests (`failsense.evaluate_test`, `scripts/evaluate_test_once.py`) | done |
 | 10.-11.11 | Review fixes: preflight of the frozen models before the lock, rehearsal on validation (`make rehearse`), honest list of the test-file readers (section 1a), README path from a clean clone | done |
-| until Sat 14.11 | Remaining review fixes. No test run. | open |
-| Sun 15.11 | The repository is published **without** a test result. README: "Final test evaluation pending — scheduled after course review (17.11.2026)." | open |
-| Mon 16.11 | Meeting with the teacher (course review). **No test run**, only small changes. | open |
-| **Tue 17.11** | **Test day**, in this order (section 0a): clean-clone check, re-freeze, freeze-verify, rehearse, evaluate-test, commit the results, docs with the numbers as they come out | open |
+| until Sat 14.11 | Remaining review fixes. No test run. | done |
+| Sun 15.11 | The repository is published **without** a test result. README: "Final test evaluation pending — scheduled after course review (17.11.2026)." | not done: the repository stayed private; it is published after the test run |
+| Mon 16.11 | Meeting with the teacher (course review). **No test run**, only small changes. | changed: the single test run was done on this day |
+| **Tue 17.11** (run brought forward to Mon 16.11) | **Test day**, in this order (section 0a): clean-clone check, re-freeze, freeze-verify, rehearse, evaluate-test, commit the results, docs with the numbers as they come out | done |
 | 18.-19.11 | Buffer, slides, backup demo video. No code changes after the test run (bugs become GitHub issues), except blockers | open |
 | Fri 20.11 | Presentation | open |
 
