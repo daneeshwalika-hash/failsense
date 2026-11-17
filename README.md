@@ -144,6 +144,7 @@ CI runs ruff and pytest with coverage on every push to `main` and every pull req
 * **The German LLM report needs its checks.** The first real answer of the local LLM passed the schema, factor and
   language checks and still contained invented numbers (section "German maintenance report").
 * Details: [docs/results.md](docs/results.md) section 9 and the [model card](docs/model_card.md).
+* **Known issues** and planned improvements after v1.0: [open issues](https://github.com/daneeshwalika-hash/failsense/issues?q=is%3Aissue+is%3Aopen+milestone%3A%22after+v1.0%22).
 
 ## Results so far
 
