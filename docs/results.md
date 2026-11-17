@@ -526,6 +526,11 @@ run. Full output: `reports/test_evaluation_final.json`. Intervals are 95 % boots
 **Schedule note:** the plan (ADR / `docs/test_evaluation_plan.md`) said 17.11.2026. The run was brought forward to
 16.11.2026 on the author's decision after the course project was accepted.
 
+**History note.** On 17.11.2026 the git history was rewritten to remove a personal e-mail address from commit
+metadata (`git filter-repo --mailmap`). File contents are unchanged. Old -> new commit ids: `3257561` -> `17d787c`,
+`a9e4b68` -> `183349d`, `dbe5b0a` -> `510fa36`. `reports/test_evaluation_final.json`, the lock file and the frozen
+manifest keep the old id as a historical record.
+
 ### 15.1 Q1: will Component X need a repair within 48 time steps?
 
 | Metric | Test | Validation (for comparison) |

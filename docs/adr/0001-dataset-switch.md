@@ -93,3 +93,5 @@ without any ML. This leakage lesson is kept here and in
 > **Note (2026-11-11), dataset version.** The reference above names Version 2 (DOI 10.5878/jvb5-d390), the DOI the
 > paper cites. The archive that was downloaded is Version 3 (2025-04-09, DOI 10.5878/bnh5-ka77, CC BY 4.0); the
 > catalogue lists the same checksums for the CSV files of both versions. See the README, "Data & Licenses".
+>
+> **Note (17.11.2026).** The commit ids above refer to the history before the rewrite; see `docs/results.md` section 15 for the new ids.
